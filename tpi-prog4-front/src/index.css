@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+/* Dark mode via clase .dark en <html> */
+@custom-variant dark (&:where(.dark, .dark *));
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+    "Helvetica Neue", system-ui, sans-serif;
+}
+
+body {
+  background-color: #f2f2f7;
+  color: #000000;
+}
+
+html.dark body {
+  background-color: #000000;
+  color: #ffffff;
+}
