@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useProductosQuery, useProductoMutations, useProductoDetalleQuery } from "../hooks/useProductos";
+import { useProductosAdminQuery, useProductoMutations, useProductoDetalleQuery } from "../hooks/useProductos";
 import { useCategoriasQuery } from "../hooks/useCategorias";
 import { useUnidadesMedidaQuery } from "../hooks/useUnidadesMedida";
 import ProductoCard from "../components/ProductoCard";
@@ -20,7 +20,7 @@ export default function ProductosAdminPage() {
   const [stockProducto, setStockProducto] = useState<Producto | null>(null);
 
   const filtros = { busqueda: busqueda || undefined, categoriaId, incluirEliminados: mostrarEliminados, skip, limit: ITEMS_POR_PAGINA };
-  const { data, isLoading, isError } = useProductosQuery(filtros);
+  const { data, isLoading, isError } = useProductosAdminQuery(filtros);
   const { data: categorias = [] } = useCategoriasQuery();
   const { data: unidades = [] } = useUnidadesMedidaQuery();
   const { crear, editar, eliminar, reactivar, ajustarStock } = useProductoMutations();
