@@ -28,9 +28,10 @@ def create_categoria(
 
 @router.get("/", response_model=list[CategoriaPublic])
 def list_categorias(
+    include_deleted: bool = Query(False),
     svc: CategoriaService = Depends(get_service),
 ):
-    return svc.get_all_list()
+    return svc.get_all_list(include_deleted=include_deleted)
 
 
 @router.get("/{categoria_id}", response_model=CategoriaPublic)
@@ -60,6 +61,15 @@ def replace_categoria(
     _admin: UsuarioPublic = Depends(require_role(["ADMIN"])),
 ):
     return svc.update(categoria_id, data)
+
+
+@router.post("/{categoria_id}/reactivar", response_model=CategoriaPublic)
+def reactivar_categoria(
+    categoria_id: int,
+    svc: CategoriaService = Depends(get_service),
+    _admin: UsuarioPublic = Depends(require_role(["ADMIN"])),
+):
+    return svc.reactivar(categoria_id)
 
 
 @router.delete("/{categoria_id}", status_code=status.HTTP_204_NO_CONTENT)
