@@ -49,5 +49,11 @@ export function useProductoMutations() {
     onSuccess: invalidar,
   });
 
-  return { crear, editar, eliminar, reactivar };
+  const ajustarStock = useMutation({
+    mutationFn: ({ id, stockCantidad }: { id: number; stockCantidad: number }) =>
+      productosApi.ajustarStock(id, stockCantidad),
+    onSuccess: invalidar,
+  });
+
+  return { crear, editar, eliminar, reactivar, ajustarStock };
 }

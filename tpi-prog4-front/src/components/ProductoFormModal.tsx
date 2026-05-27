@@ -14,7 +14,8 @@ interface Props {
 
 const FORM_VACIO: ProductoFormData = {
   nombre: "", descripcion: "", imagenUrl: "", precioBase: 0,
-  disponible: true, unidadVentaId: null, categoriaIds: [], ingredientes: [],
+  disponible: true, tipoProducto: "terminado", unidadVentaId: null,
+  categoriaIds: [], ingredientes: [],
 };
 
 function calcularStock(lineas: ProductoIngrediente[], mapa: Map<number, Ingrediente>): number {
@@ -116,11 +117,14 @@ export default function ProductoFormModal({ inicial, onGuardar, onCancelar, carg
   const [form, setForm] = useState<ProductoFormData>(FORM_VACIO);
   const [errores, setErrores] = useState<Record<string, string>>({});
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // pasoTipo: true = mostrar selección de tipo (solo para productos nuevos)
+  const [pasoTipo, setPasoTipo] = useState<boolean>(inicial == null);
 
   useEffect(() => {
     setForm(inicial ? { ...inicial } : { ...FORM_VACIO });
     setErrores({});
     setDrawerOpen(false);
+    setPasoTipo(inicial == null);
   }, [inicial]);
 
   const stockCalculado = useMemo(
@@ -175,6 +179,9 @@ export default function ProductoFormModal({ inicial, onGuardar, onCancelar, carg
   function validar(): boolean {
     const e: Record<string, string> = {};
     if (!form.nombre.trim()) e.nombre = "El nombre es obligatorio.";
+    if (form.tipoProducto === "elaborado" && form.ingredientes.length === 0) {
+      e.ingredientes = "Debés agregar al menos un ingrediente.";
+    }
     setErrores(e);
     return Object.keys(e).length === 0;
   }
@@ -191,6 +198,65 @@ export default function ProductoFormModal({ inicial, onGuardar, onCancelar, carg
     "w-full bg-gray-50 dark:bg-[#3a3a3c] border border-gray-200 dark:border-[#48484a] rounded-xl px-3 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-[#007aff]";
   const labelCls = "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1";
 
+  // ── Paso 0: selección de tipo (solo productos nuevos) ──────────────────────
+  if (pasoTipo) {
+    return (
+      <div className="fixed inset-0 bg-black/60 dark:bg-black/75 z-50 flex items-center justify-center p-6">
+        <div className="bg-white dark:bg-[#1c1c1e] rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden">
+          {/* Header */}
+          <div className="px-8 pt-8 pb-5">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Nuevo producto</h2>
+            <p className="text-sm text-gray-400 dark:text-gray-500 mt-1.5">
+              ¿Qué tipo de producto es? Esto define cómo se gestiona el stock y los ingredientes.
+            </p>
+          </div>
+
+          {/* Cards de tipo */}
+          <div className="px-8 pb-6 grid grid-cols-2 gap-4">
+            {/* Elaborado */}
+            <button
+              type="button"
+              onClick={() => { cambiar("tipoProducto", "elaborado"); setPasoTipo(false); }}
+              className="flex flex-col items-center text-center p-6 rounded-2xl border-2 border-[#007aff]/30 dark:border-[#0a84ff]/30 hover:border-[#007aff] dark:hover:border-[#0a84ff] hover:bg-[#007aff]/5 dark:hover:bg-[#0a84ff]/10 transition-all"
+            >
+              <span className="text-4xl mb-3">🍳</span>
+              <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2">Elaborado</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+                Se fabrica a partir de ingredientes. El stock y el costo se calculan automáticamente.
+                Requiere al menos un ingrediente.
+              </p>
+            </button>
+
+            {/* Terminado */}
+            <button
+              type="button"
+              onClick={() => { cambiar("tipoProducto", "terminado"); setPasoTipo(false); }}
+              className="flex flex-col items-center text-center p-6 rounded-2xl border-2 border-gray-200 dark:border-[#3a3a3c] hover:border-[#007aff] dark:hover:border-[#0a84ff] hover:bg-gray-50 dark:hover:bg-[#2c2c2e] transition-all"
+            >
+              <span className="text-4xl mb-3">📦</span>
+              <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2">Terminado</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+                Producto listo para la venta (ej: bebidas, snacks). El stock se gestiona manualmente.
+              </p>
+            </button>
+          </div>
+
+          {/* Footer */}
+          <div className="px-8 py-4 border-t border-gray-100 dark:border-[#3a3a3c] flex justify-end">
+            <button
+              type="button"
+              onClick={onCancelar}
+              className="px-5 py-2.5 text-sm text-gray-600 dark:text-gray-400 border border-gray-300 dark:border-[#48484a] rounded-xl hover:bg-gray-50 dark:hover:bg-[#3a3a3c] transition-colors"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Formulario principal ───────────────────────────────────────────────────
   return (
     <div className="fixed inset-0 bg-black/60 dark:bg-black/75 z-50 flex">
       {/* Contenedor principal (pantalla completa) */}
@@ -199,39 +265,54 @@ export default function ProductoFormModal({ inicial, onGuardar, onCancelar, carg
         {/* ── Header ── */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-[#3a3a3c] flex-shrink-0 bg-white dark:bg-[#2c2c2e]">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-              {inicial ? "Editar producto" : "Nuevo producto"}
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                {inicial ? "Editar producto" : "Nuevo producto"}
+              </h2>
+              {/* Badge de tipo */}
+              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                form.tipoProducto === "elaborado"
+                  ? "bg-[#ff9500]/10 text-[#ff9500] dark:text-[#ff9f0a]"
+                  : "bg-[#34c759]/10 text-[#34c759] dark:text-[#30d158]"
+              }`}>
+                {form.tipoProducto === "elaborado" ? "🍳 Elaborado" : "📦 Terminado"}
+              </span>
+            </div>
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
               Completá la información del producto
             </p>
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Botón hamburguesa → drawer de ingredientes */}
-            <button
-              type="button"
-              onClick={() => setDrawerOpen((o) => !o)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium border transition-all
-                ${drawerOpen
-                  ? "bg-[#007aff] dark:bg-[#0a84ff] border-[#007aff] dark:border-[#0a84ff] text-white"
-                  : "bg-white dark:bg-[#3a3a3c] border-gray-200 dark:border-[#48484a] text-gray-700 dark:text-gray-300 hover:border-[#007aff] dark:hover:border-[#0a84ff]"
-                }`}
-            >
-              {/* Ícono hamburguesa (3 líneas) */}
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0">
-                <rect y="2"  width="16" height="2" rx="1" fill="currentColor"/>
-                <rect y="7"  width="16" height="2" rx="1" fill="currentColor"/>
-                <rect y="12" width="16" height="2" rx="1" fill="currentColor"/>
-              </svg>
-              Ingredientes
-              {form.ingredientes.length > 0 && (
-                <span className={`text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center
-                  ${drawerOpen ? "bg-white/30 text-white" : "bg-[#007aff] dark:bg-[#0a84ff] text-white"}`}>
-                  {form.ingredientes.length}
-                </span>
-              )}
-            </button>
+            {/* Botón hamburguesa → solo para productos elaborados */}
+            {form.tipoProducto === "elaborado" && (
+              <button
+                type="button"
+                onClick={() => setDrawerOpen((o) => !o)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium border transition-all
+                  ${drawerOpen
+                    ? "bg-[#007aff] dark:bg-[#0a84ff] border-[#007aff] dark:border-[#0a84ff] text-white"
+                    : errores.ingredientes
+                      ? "bg-[#ff3b30]/5 dark:bg-[#ff453a]/10 border-[#ff3b30] dark:border-[#ff453a] text-[#ff3b30] dark:text-[#ff453a]"
+                      : "bg-white dark:bg-[#3a3a3c] border-gray-200 dark:border-[#48484a] text-gray-700 dark:text-gray-300 hover:border-[#007aff] dark:hover:border-[#0a84ff]"
+                  }`}
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0">
+                  <rect y="2"  width="16" height="2" rx="1" fill="currentColor"/>
+                  <rect y="7"  width="16" height="2" rx="1" fill="currentColor"/>
+                  <rect y="12" width="16" height="2" rx="1" fill="currentColor"/>
+                </svg>
+                Ingredientes
+                {form.ingredientes.length > 0 ? (
+                  <span className={`text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center
+                    ${drawerOpen ? "bg-white/30 text-white" : "bg-[#007aff] dark:bg-[#0a84ff] text-white"}`}>
+                    {form.ingredientes.length}
+                  </span>
+                ) : errores.ingredientes ? (
+                  <span className="text-xs font-bold">!</span>
+                ) : null}
+              </button>
+            )}
 
             {/* Cerrar modal */}
             <button
@@ -322,7 +403,7 @@ export default function ProductoFormModal({ inicial, onGuardar, onCancelar, carg
                     onChange={(e) => cambiar("precioBase", Number(e.target.value))}
                     className={inputCls}
                   />
-                  {precioSugeridoCalc > 0 && (
+                  {form.tipoProducto === "elaborado" && precioSugeridoCalc > 0 && (
                     <p className="text-xs text-[#34c759] dark:text-[#30d158] mt-1">
                       Sugerido: ${Math.round(precioSugeridoCalc).toLocaleString("es-AR")}
                     </p>
@@ -391,21 +472,40 @@ export default function ProductoFormModal({ inicial, onGuardar, onCancelar, carg
                 </div>
               </div>
 
-              {/* Resumen de ingredientes (mini indicador) */}
-              {form.ingredientes.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setDrawerOpen(true)}
-                  className="w-full flex items-center justify-between p-3.5 bg-[#007aff]/5 dark:bg-[#0a84ff]/10 border border-[#007aff]/20 dark:border-[#0a84ff]/20 rounded-xl hover:border-[#007aff]/50 transition-colors"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-[#007aff] dark:text-[#0a84ff] font-bold text-lg">{form.ingredientes.length}</span>
-                    <span className="text-sm text-[#007aff] dark:text-[#0a84ff]">
-                      ingrediente{form.ingredientes.length > 1 ? "s" : ""} · stock: {stockCalculado} u.
-                    </span>
-                  </div>
-                  <span className="text-xs text-[#007aff] dark:text-[#0a84ff]">Ver →</span>
-                </button>
+              {/* Mini indicador de ingredientes — solo para elaborados */}
+              {form.tipoProducto === "elaborado" && (
+                <>
+                  {form.ingredientes.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => setDrawerOpen(true)}
+                      className="w-full flex items-center justify-between p-3.5 bg-[#007aff]/5 dark:bg-[#0a84ff]/10 border border-[#007aff]/20 dark:border-[#0a84ff]/20 rounded-xl hover:border-[#007aff]/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-[#007aff] dark:text-[#0a84ff] font-bold text-lg">{form.ingredientes.length}</span>
+                        <span className="text-sm text-[#007aff] dark:text-[#0a84ff]">
+                          ingrediente{form.ingredientes.length > 1 ? "s" : ""} · stock: {stockCalculado} u.
+                        </span>
+                      </div>
+                      <span className="text-xs text-[#007aff] dark:text-[#0a84ff]">Ver →</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setDrawerOpen(true)}
+                      className={`w-full flex items-center justify-between p-3.5 rounded-xl border transition-colors ${
+                        errores.ingredientes
+                          ? "bg-[#ff3b30]/5 dark:bg-[#ff453a]/10 border-[#ff3b30]/40 dark:border-[#ff453a]/40"
+                          : "bg-gray-50 dark:bg-[#2c2c2e] border-gray-200 dark:border-[#3a3a3c] hover:border-[#007aff]/50"
+                      }`}
+                    >
+                      <span className={`text-sm ${errores.ingredientes ? "text-[#ff3b30] dark:text-[#ff453a]" : "text-gray-500 dark:text-gray-400"}`}>
+                        {errores.ingredientes ? `⚠ ${errores.ingredientes}` : "+ Agregar ingredientes"}
+                      </span>
+                      <span className="text-xs text-gray-400 dark:text-gray-500">Abrir →</span>
+                    </button>
+                  )}
+                </>
               )}
             </div>
           </form>
@@ -414,9 +514,11 @@ export default function ProductoFormModal({ inicial, onGuardar, onCancelar, carg
         {/* ── Footer ── */}
         <div className="flex justify-between items-center px-6 py-4 border-t border-gray-200 dark:border-[#3a3a3c] flex-shrink-0 bg-white dark:bg-[#2c2c2e]">
           <p className="text-xs text-gray-400 dark:text-gray-500">
-            {form.ingredientes.length > 0
-              ? `${form.ingredientes.length} ingrediente${form.ingredientes.length > 1 ? "s" : ""} · stock estimado: ${stockCalculado} u.`
-              : "Sin ingredientes"}
+            {form.tipoProducto === "elaborado"
+              ? form.ingredientes.length > 0
+                ? `${form.ingredientes.length} ingrediente${form.ingredientes.length > 1 ? "s" : ""} · stock estimado: ${stockCalculado} u.`
+                : "⚠ Sin ingredientes — requeridos para productos elaborados"
+              : "📦 Producto terminado · stock gestionado manualmente"}
           </p>
           <div className="flex gap-3">
             <button
@@ -444,9 +546,9 @@ export default function ProductoFormModal({ inicial, onGuardar, onCancelar, carg
           style={{ zIndex: 10 }}
         />
 
-        {/* ── Drawer de ingredientes ── */}
+        {/* ── Drawer de ingredientes (solo elaborados) ── */}
         <div
-          className={`absolute top-0 right-0 h-full w-full sm:w-[460px] bg-white dark:bg-[#2c2c2e] shadow-2xl flex flex-col transition-transform duration-300 ease-in-out border-l border-gray-200 dark:border-[#3a3a3c]`}
+          className="absolute top-0 right-0 h-full w-full sm:w-[460px] bg-white dark:bg-[#2c2c2e] shadow-2xl flex flex-col transition-transform duration-300 ease-in-out border-l border-gray-200 dark:border-[#3a3a3c]"
           style={{ zIndex: 20, transform: drawerOpen ? "translateX(0)" : "translateX(100%)" }}
         >
           {/* Header del drawer */}
@@ -455,7 +557,7 @@ export default function ProductoFormModal({ inicial, onGuardar, onCancelar, carg
               <h3 className="text-base font-semibold text-gray-900 dark:text-white">Ingredientes</h3>
               <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
                 {form.ingredientes.length === 0
-                  ? "Sin ingredientes agregados"
+                  ? "Sin ingredientes — este producto los requiere"
                   : `${form.ingredientes.length} ingrediente${form.ingredientes.length > 1 ? "s" : ""} · stock: ${stockCalculado} u.`}
               </p>
             </div>
@@ -490,10 +592,12 @@ export default function ProductoFormModal({ inicial, onGuardar, onCancelar, carg
 
             {/* Lista de ingredientes */}
             {form.ingredientes.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center border-2 border-dashed border-gray-200 dark:border-[#3a3a3c] rounded-2xl">
+              <div className="flex flex-col items-center justify-center py-12 text-center border-2 border-dashed border-[#ff3b30]/30 dark:border-[#ff453a]/30 rounded-2xl bg-[#ff3b30]/5 dark:bg-[#ff453a]/10">
                 <p className="text-4xl mb-3">🧂</p>
-                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Sin ingredientes</p>
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">El stock calculado será 0</p>
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Sin ingredientes</p>
+                <p className="text-xs text-[#ff3b30] dark:text-[#ff453a] mt-1 font-medium">
+                  ⚠ Este producto elaborado requiere al menos uno
+                </p>
               </div>
             ) : (
               <div className="space-y-2">

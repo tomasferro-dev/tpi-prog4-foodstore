@@ -8,11 +8,12 @@ interface Props {
   onEliminar?: (p: Producto) => void;
   onReactivar?: (p: Producto) => void;
   onEditar?: (p: Producto) => void;
+  onAjustarStock?: (p: Producto) => void;
 }
 
 export default function ProductoCard({
   producto, categorias, esAdmin, unidades = [],
-  onEliminar, onReactivar, onEditar,
+  onEliminar, onReactivar, onEditar, onAjustarStock,
 }: Props) {
   const eliminado = producto.eliminadoEn !== null;
   const sinStock = producto.stockCantidad === 0;
@@ -62,7 +63,16 @@ export default function ProductoCard({
 
       {/* Cuerpo */}
       <div className="p-4 flex-1 flex flex-col">
-        <h3 className="font-bold text-base text-gray-900 dark:text-white mb-1">{producto.nombre}</h3>
+        <div className="flex items-start justify-between gap-2 mb-1">
+          <h3 className="font-bold text-base text-gray-900 dark:text-white">{producto.nombre}</h3>
+          <span className={`flex-shrink-0 text-xs font-medium px-1.5 py-0.5 rounded-full ${
+            producto.tipoProducto === "elaborado"
+              ? "bg-[#ff9500]/10 text-[#ff9500] dark:text-[#ff9f0a]"
+              : "bg-[#34c759]/10 text-[#34c759] dark:text-[#30d158]"
+          }`}>
+            {producto.tipoProducto === "elaborado" ? "🍳" : "📦"}
+          </span>
+        </div>
         <p className="text-sm text-gray-500 dark:text-gray-400 mb-2 line-clamp-2">{producto.descripcion}</p>
 
         {nombresCategorias && (
@@ -100,6 +110,13 @@ export default function ProductoCard({
               <button type="button" onClick={() => onEditar(producto)}
                 className="flex-1 bg-[#ff9500] dark:bg-[#ff9f0a] hover:opacity-90 text-white text-sm py-1.5 rounded-xl transition-opacity">
                 Editar
+              </button>
+            )}
+            {/* Botón de ajuste de stock solo para productos terminados activos */}
+            {!eliminado && producto.tipoProducto === "terminado" && onAjustarStock && (
+              <button type="button" onClick={() => onAjustarStock(producto)}
+                className="flex-1 bg-[#007aff] dark:bg-[#0a84ff] hover:opacity-90 text-white text-sm py-1.5 rounded-xl transition-opacity">
+                📦 Stock
               </button>
             )}
             {!eliminado && onEliminar && (

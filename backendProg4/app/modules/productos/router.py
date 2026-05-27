@@ -6,8 +6,8 @@ from app.core.database import get_session
 from app.core.deps import get_current_active_user, require_role
 from app.modules.usuarios.models import UsuarioPublic
 from app.modules.productos.schemas import (
-    ProductoCreate, ProductoPublic, ProductoUpdate, ProductoList,
-    ProductoConDetalle, ProductoCategoriaCreate, ProductoIngredienteCreate,
+    ProductoCreate, ProductoCreateCompleto, ProductoPublic, ProductoUpdate, ProductoList,
+    ProductoConDetalle, ProductoCategoriaCreate, ProductoIngredienteCreate, ProductoStockAjuste,
 )
 from app.modules.productos.service import ProductoService
 
@@ -78,6 +78,29 @@ def create_producto(
     _admin: Annotated[UsuarioPublic, Depends(require_role(["ADMIN", "STOCK"]))],
 ):
     return svc.create(data)
+
+
+@admin_router.post("/completo", response_model=ProductoConDetalle, status_code=status.HTTP_201_CREATED)
+def create_producto_completo(
+    data: ProductoCreateCompleto,
+    svc: Annotated[ProductoService, Depends(get_service)],
+    _admin: Annotated[UsuarioPublic, Depends(require_role(["ADMIN", "STOCK"]))],
+):
+    """Crea un producto con categorías e ingredientes en una sola transacción.
+    Para productos elaborados, se requiere al menos un ingrediente."""
+    return svc.create_completo(data)
+
+
+@admin_router.patch("/{producto_id}/stock", response_model=ProductoPublic)
+def ajustar_stock(
+    producto_id: int,
+    data: ProductoStockAjuste,
+    svc: ProductoService = Depends(get_service),
+    _admin: UsuarioPublic = Depends(require_role(["ADMIN", "STOCK"])),
+):
+    """Establece el stock de un producto terminado.
+    No aplica a elaborados (su stock se calcula desde ingredientes)."""
+    return svc.ajustar_stock(producto_id, data)
 
 
 @admin_router.patch("/{producto_id}", response_model=ProductoPublic)
