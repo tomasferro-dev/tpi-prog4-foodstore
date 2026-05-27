@@ -6,6 +6,7 @@ import RegisterPage from "./pages/RegisterPage";
 import CatalogoPage from "./pages/CatalogoPage";
 import ProductosAdminPage from "./pages/ProductosAdminPage";
 import InsumosAdminPage from "./pages/InsumosAdminPage";
+import CategoriasAdminPage from "./pages/CategoriasAdminPage";
 import AdminConfigPage from "./pages/AdminConfigPage";
 import PrivateRoute from "./routes/PrivateRoute";
 import Layout from "./components/Layout";
@@ -38,6 +39,16 @@ export default function App() {
           element={
             <PrivateRoute roles={["ADMIN", "STOCK"]}>
               <InsumosAdminPage />
+            </PrivateRoute>
+          }
+        />
+
+        {/* Gestión categorías: solo ADMIN */}
+        <Route
+          path="/admin/categorias"
+          element={
+            <PrivateRoute roles={["ADMIN"]}>
+              <CategoriasAdminPage />
             </PrivateRoute>
           }
         />

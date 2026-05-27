@@ -44,6 +44,11 @@ export default function Navbar() {
             </NavLink>
           )}
           {esAdmin && (
+            <NavLink to="/admin/categorias" className={linkClase}>
+              Categorías
+            </NavLink>
+          )}
+          {esAdmin && (
             <NavLink to="/admin/config" className={linkClase}>
               Config
             </NavLink>
