@@ -54,8 +54,9 @@ const ACCESS_TOKEN_EXPIRES_SECONDS = 30 * 60;
 // stockManual se usa solo cuando el producto no tiene ingredientes.
 // =====================================================================
 
-type ProductoStored = Omit<Producto, "stockCantidad" | "precioSugerido" | "tieneAlergenos"> & {
+type ProductoStored = Omit<Producto, "stockCantidad" | "precioSugerido" | "tieneAlergenos" | "tipoProducto"> & {
   stockManual: number;
+  tipoProducto?: "elaborado" | "terminado"; // opcional para compatibilidad con seed antiguo
 };
 
 // =====================================================================
@@ -192,6 +193,8 @@ function enriquecerProducto(
   const { stockManual, ...resto } = stored;
   return {
     ...resto,
+    // Si no tiene tipoProducto explícito, lo inferimos por la presencia de ingredientes
+    tipoProducto: stored.tipoProducto ?? (stored.ingredientes.length > 0 ? "elaborado" : "terminado"),
     stockCantidad: calcularStockProducto(stored.ingredientes, ingredientes, stockManual),
     precioSugerido: calcularPrecioSugerido(stored.ingredientes, ingredientes, config),
     tieneAlergenos: stored.ingredientes.some((pi) => ingredientes.find((i) => i.id === pi.ingredienteId)?.esAlergeno ?? false),

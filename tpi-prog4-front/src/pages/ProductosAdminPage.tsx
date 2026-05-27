@@ -4,6 +4,7 @@ import { useCategoriasQuery } from "../hooks/useCategorias";
 import { useUnidadesMedidaQuery } from "../hooks/useUnidadesMedida";
 import ProductoCard from "../components/ProductoCard";
 import ProductoFormModal from "../components/ProductoFormModal";
+import StockAjusteModal from "../components/StockAjusteModal";
 import Pagination from "../components/Pagination";
 import type { Categoria, Producto, ProductoFormData } from "../types";
 
@@ -16,12 +17,13 @@ export default function ProductosAdminPage() {
   const [mostrarEliminados, setMostrarEliminados] = useState(false);
   const [modalAbierto, setModalAbierto] = useState(false);
   const [editandoId, setEditandoId] = useState<number | null>(null);
+  const [stockProducto, setStockProducto] = useState<Producto | null>(null);
 
   const filtros = { busqueda: busqueda || undefined, categoriaId, incluirEliminados: mostrarEliminados, skip, limit: ITEMS_POR_PAGINA };
   const { data, isLoading, isError } = useProductosQuery(filtros);
   const { data: categorias = [] } = useCategoriasQuery();
   const { data: unidades = [] } = useUnidadesMedidaQuery();
-  const { crear, editar, eliminar, reactivar } = useProductoMutations();
+  const { crear, editar, eliminar, reactivar, ajustarStock } = useProductoMutations();
   const { data: editandoDetalle, isLoading: cargandoDetalle } = useProductoDetalleQuery(editandoId);
 
   const productos = data?.items ?? [];
@@ -96,6 +98,7 @@ export default function ProductosAdminPage() {
             {productos.map((p: Producto) => (
               <ProductoCard key={p.id} producto={p} categorias={categorias} unidades={unidades} esAdmin={true}
                 onEditar={(p) => { setEditandoId(p.id); setModalAbierto(true); }}
+                onAjustarStock={(p) => setStockProducto(p)}
                 onEliminar={(p) => confirm(`Dar de baja "${p.nombre}"?`) && eliminar.mutate(p.id)}
                 onReactivar={(p) => reactivar.mutate(p.id)} />
             ))}
@@ -107,10 +110,24 @@ export default function ProductosAdminPage() {
       {modalAbierto && (
         <ProductoFormModal
           inicial={editandoDetalle
-            ? { nombre: editandoDetalle.nombre, descripcion: editandoDetalle.descripcion, imagenUrl: editandoDetalle.imagenUrl, precioBase: editandoDetalle.precioBase, disponible: editandoDetalle.disponible, unidadVentaId: editandoDetalle.unidadVentaId, categoriaIds: editandoDetalle.categoriaIds, ingredientes: editandoDetalle.ingredientes }
+            ? { nombre: editandoDetalle.nombre, descripcion: editandoDetalle.descripcion, imagenUrl: editandoDetalle.imagenUrl, precioBase: editandoDetalle.precioBase, disponible: editandoDetalle.disponible, tipoProducto: editandoDetalle.tipoProducto, unidadVentaId: editandoDetalle.unidadVentaId, categoriaIds: editandoDetalle.categoriaIds, ingredientes: editandoDetalle.ingredientes }
             : null}
           onGuardar={handleGuardar} onCancelar={cerrarModal}
           cargando={crear.isPending || editar.isPending || cargandoDetalle} />
+      )}
+
+      {stockProducto && (
+        <StockAjusteModal
+          producto={stockProducto}
+          onGuardar={(stockCantidad) =>
+            ajustarStock.mutate(
+              { id: stockProducto.id, stockCantidad },
+              { onSuccess: () => setStockProducto(null) }
+            )
+          }
+          onCancelar={() => setStockProducto(null)}
+          cargando={ajustarStock.isPending}
+        />
       )}
     </div>
   );

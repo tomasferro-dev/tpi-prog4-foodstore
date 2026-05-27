@@ -47,6 +47,7 @@ class Producto(SQLModel, table=True):
     precio_base: float = Field(ge=0, nullable=False)
     stock_cantidad: int = Field(default=0, ge=0, nullable=False)
     disponible: bool = Field(default=True, nullable=False)
+    tipo_producto: str = Field(default="terminado", nullable=False)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     deleted_at: Optional[datetime] = Field(default=None)

@@ -3,9 +3,9 @@ from fastapi import HTTPException, status
 from sqlmodel import Session
 from app.modules.productos.models import Producto, ProductoCategoria, ProductoIngrediente
 from app.modules.productos.schemas import (
-    ProductoCreate, ProductoPublic, ProductoUpdate, ProductoList,
+    ProductoCreate, ProductoCreateCompleto, ProductoPublic, ProductoUpdate, ProductoList,
     ProductoConDetalle, ProductoCategoriaCreate, ProductoCategoriaPublic,
-    ProductoIngredienteCreate, ProductoIngredientePublic,
+    ProductoIngredienteCreate, ProductoIngredientePublic, ProductoStockAjuste,
 )
 from app.modules.categorias.schemas import CategoriaPublic
 from app.modules.ingredientes.schemas import IngredientePublic
@@ -19,7 +19,14 @@ class ProductoService:
 
     @staticmethod
     def _calc_stock(p: Producto) -> int:
-        """Stock disponible = min de (stock_ingrediente // cantidad_requerida) por ingrediente."""
+        """Devuelve el stock efectivo según el tipo de producto.
+
+        - elaborado: mínimo de (stock_ingrediente // cantidad_requerida) por ingrediente.
+        - terminado: valor almacenado en stock_cantidad (gestionado manualmente).
+        """
+        if p.tipo_producto == "terminado":
+            return p.stock_cantidad
+        # elaborado: calculado desde ingredientes
         stocks = []
         for pi in p.producto_ingredientes:
             if pi.ingrediente and pi.cantidad > 0:
@@ -82,6 +89,7 @@ class ProductoService:
             precio_base=p.precio_base,
             stock_cantidad=self._calc_stock(p),
             disponible=p.disponible,
+            tipo_producto=p.tipo_producto,
             unidad_venta_id=p.unidad_venta_id,
             unidad_venta=unidad_venta,
             categorias=categorias,
@@ -99,6 +107,73 @@ class ProductoService:
                     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                                         detail=f"UnidadMedida id={data.unidad_venta_id} no encontrada")
             p = Producto.model_validate(data)
+            uow.productos.add(p)
+            result = ProductoPublic.model_validate(p)
+        return result
+
+    def create_completo(self, data: ProductoCreateCompleto) -> ProductoConDetalle:
+        """Crea producto + categorías + ingredientes en una sola transacción atómica."""
+        with ProductoUnitOfWork(self._session) as uow:
+            if data.unidad_venta_id:
+                if not uow.unidades.get_by_id(data.unidad_venta_id):
+                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                        detail=f"UnidadMedida id={data.unidad_venta_id} no encontrada")
+
+            # Crear el producto base (el repo hace flush → p.id queda disponible)
+            p = Producto(
+                nombre=data.nombre,
+                descripcion=data.descripcion,
+                imagen_url=data.imagen_url,
+                precio_base=data.precio_base,
+                unidad_venta_id=data.unidad_venta_id,
+                stock_cantidad=data.stock_cantidad,
+                disponible=data.disponible,
+                tipo_producto=data.tipo_producto,
+            )
+            uow.productos.add(p)  # flush interno → p.id ya tiene valor
+
+            # Agregar categorías
+            for cat_id in data.categoria_ids:
+                if not uow.categorias.get_by_id(cat_id):
+                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                        detail=f"Categoria id={cat_id} no encontrada")
+                uow.producto_categorias.add(ProductoCategoria(
+                    producto_id=p.id,
+                    categoria_id=cat_id,
+                    es_principal=False,
+                ))
+
+            # Agregar ingredientes
+            for ing_data in data.ingredientes:
+                if not uow.ingredientes.get_by_id(ing_data.ingrediente_id):
+                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                        detail=f"Ingrediente id={ing_data.ingrediente_id} no encontrado")
+                if not uow.unidades.get_by_id(ing_data.unidad_medida_id):
+                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                        detail=f"UnidadMedida id={ing_data.unidad_medida_id} no encontrada")
+                uow.producto_ingredientes.add(ProductoIngrediente(
+                    producto_id=p.id,
+                    ingrediente_id=ing_data.ingrediente_id,
+                    cantidad=ing_data.cantidad,
+                    unidad_medida_id=ing_data.unidad_medida_id,
+                    es_removible=ing_data.es_removible,
+                ))
+
+            result = self._build_detalle(uow, p.id)
+        return result
+
+    def ajustar_stock(self, producto_id: int, data: ProductoStockAjuste) -> ProductoPublic:
+        """Establece el stock de un producto terminado (valor absoluto)."""
+        with ProductoUnitOfWork(self._session) as uow:
+            p = self._get_or_404(uow, producto_id)
+            if p.tipo_producto != "terminado":
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Solo se puede ajustar el stock manualmente de productos terminados. "
+                           "El stock de productos elaborados se calcula automáticamente desde los ingredientes.",
+                )
+            p.stock_cantidad = data.stock_cantidad
+            p.updated_at = datetime.now(timezone.utc)
             uow.productos.add(p)
             result = ProductoPublic.model_validate(p)
         return result
@@ -229,7 +304,13 @@ class ProductoService:
 
     def quitar_ingrediente(self, producto_id: int, ingrediente_id: int) -> ProductoConDetalle:
         with ProductoUnitOfWork(self._session) as uow:
-            self._get_or_404(uow, producto_id)
+            p = self._get_or_404(uow, producto_id)
+            # Los productos elaborados deben conservar al menos un ingrediente
+            if p.tipo_producto == "elaborado" and len(p.producto_ingredientes) <= 1:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Un producto elaborado debe tener al menos un ingrediente.",
+                )
             pi = uow.producto_ingredientes.get_by_ids(producto_id, ingrediente_id)
             if not pi:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,

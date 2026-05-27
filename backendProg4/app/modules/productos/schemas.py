@@ -1,6 +1,7 @@
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Literal
 from sqlmodel import SQLModel, Field
+from pydantic import model_validator
 
 from app.modules.categorias.schemas import CategoriaPublic
 from app.modules.ingredientes.schemas import IngredientePublic
@@ -42,6 +43,21 @@ class ProductoCreate(SQLModel):
     unidad_venta_id: Optional[int] = None
     stock_cantidad: int = 0
     disponible: bool = True
+    tipo_producto: Literal["elaborado", "terminado"] = "terminado"
+
+
+class ProductoCreateCompleto(ProductoCreate):
+    """Crea el producto, sus categorías e ingredientes en una sola transacción atómica."""
+    categoria_ids: List[int] = []
+    ingredientes: List["ProductoIngredienteCreate"] = []
+
+    @model_validator(mode="after")
+    def validar_elaborado_requiere_ingredientes(self) -> "ProductoCreateCompleto":
+        if self.tipo_producto == "elaborado" and len(self.ingredientes) == 0:
+            raise ValueError(
+                "Un producto elaborado debe tener al menos un ingrediente."
+            )
+        return self
 
 
 class ProductoUpdate(SQLModel):
@@ -52,6 +68,7 @@ class ProductoUpdate(SQLModel):
     unidad_venta_id: Optional[int] = None
     stock_cantidad: Optional[int] = Field(default=None, ge=0)
     disponible: Optional[bool] = None
+    tipo_producto: Optional[Literal["elaborado", "terminado"]] = None
 
 
 class ProductoPublic(SQLModel):
@@ -62,6 +79,7 @@ class ProductoPublic(SQLModel):
     precio_base: float
     stock_cantidad: int
     disponible: bool
+    tipo_producto: Literal["elaborado", "terminado"] = "terminado"
     unidad_venta_id: Optional[int] = None
     created_at: datetime
     updated_at: datetime
@@ -75,6 +93,11 @@ class ProductoList(SQLModel):
     limit: int
 
 
+class ProductoStockAjuste(SQLModel):
+    """Establece el stock de un producto terminado (valor absoluto)."""
+    stock_cantidad: int = Field(ge=0)
+
+
 class ProductoConDetalle(SQLModel):
     id: int
     nombre: str
@@ -83,6 +106,7 @@ class ProductoConDetalle(SQLModel):
     precio_base: float
     stock_cantidad: int
     disponible: bool
+    tipo_producto: Literal["elaborado", "terminado"] = "terminado"
     unidad_venta_id: Optional[int] = None
     unidad_venta: Optional[UnidadMedidaPublic] = None
     categorias: List[ProductoCategoriaPublic] = []

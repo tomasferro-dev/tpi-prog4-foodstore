@@ -120,6 +120,7 @@ export interface Producto {
   tieneAlergenos: boolean;    // calculado: true si algun ingrediente es alergeno
   stockCantidad: number;      // calculado desde ingredientes (solo lectura)
   disponible: boolean;
+  tipoProducto: "elaborado" | "terminado";
   unidadVentaId: number | null;
   categoriaIds: number[];
   ingredientes: ProductoIngrediente[];

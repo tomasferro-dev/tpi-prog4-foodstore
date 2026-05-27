@@ -153,14 +153,15 @@ def _seed_productos(
     if session.exec(select(Producto)).first():
         return
 
-    # (nombre, descripcion, precio_base, disponible,
+    # (nombre, descripcion, precio_base, disponible, tipo_producto,
+    #  stock_cantidad_inicial,   ← solo relevante para "terminado"
     #  categorias[(nombre, es_principal)],
     #  ingredientes[(nombre_ing, cantidad, simbolo_um, es_removible)])
     defs = [
         (
             "Pizza Muzzarella",
             "Clásica pizza con salsa de tomate y abundante muzzarella.",
-            12000.0, True,
+            12000.0, True, "elaborado", 0,
             [("Comidas Preparadas", False), ("Pizzas", True)],
             [("Queso mozzarella", 200.0, "g", False),
              ("Salsa de tomate",  150.0, "mL", False),
@@ -169,7 +170,7 @@ def _seed_productos(
         (
             "Pizza Napolitana",
             "Pizza con tomate fresco, muzzarella y un toque de aceitunas.",
-            13000.0, True,
+            13000.0, True, "elaborado", 0,
             [("Comidas Preparadas", False), ("Pizzas", True)],
             [("Queso mozzarella", 200.0, "g",  False),
              ("Salsa de tomate",  200.0, "mL", False),
@@ -178,7 +179,7 @@ def _seed_productos(
         (
             "Hamburguesa Completa",
             "Medallón de carne, lechuga, tomate y mayonesa.",
-            15000.0, True,
+            15000.0, True, "elaborado", 0,
             [("Comidas Preparadas", False), ("Hamburguesas", True)],
             [("Carne vacuna",       200.0, "g",  False),
              ("Lechuga",             30.0, "g",  True),
@@ -188,7 +189,7 @@ def _seed_productos(
         (
             "Hamburguesa con Queso",
             "Medallón de carne con cheddar derretido, lechuga y mayonesa.",
-            16500.0, True,
+            16500.0, True, "elaborado", 0,
             [("Comidas Preparadas", False), ("Hamburguesas", True)],
             [("Carne vacuna",       200.0, "g",  False),
              ("Queso cheddar",       50.0, "g",  True),
@@ -199,21 +200,21 @@ def _seed_productos(
         (
             "Coca Cola 500mL",
             "Gaseosa cola en botella de 500mL.",
-            1500.0, True,
+            1500.0, True, "terminado", 50,
             [("Bebidas", True)],
-            [("Coca Cola 500mL", 1.0, "u", False)],
+            [],   # terminado: sin ingredientes, el stock se gestiona manualmente
         ),
         (
             "Agua Mineral 500mL",
             "Agua mineral sin gas.",
-            800.0, True,
+            800.0, True, "terminado", 80,
             [("Bebidas", True)],
-            [("Agua mineral 500mL", 1.0, "u", False)],
+            [],
         ),
         (
             "Pizza Fugazzeta",
             "Fugazzeta clásica con cebolla y muzzarella.",
-            14000.0, False,
+            14000.0, False, "elaborado", 0,
             [("Comidas Preparadas", False), ("Pizzas", True)],
             [("Queso mozzarella", 250.0, "g", False),
              ("Base de pizza",      1.0, "u", False)],
@@ -221,7 +222,7 @@ def _seed_productos(
         (
             "Empanada de Jamón y Queso",
             "Empanada rellena de jamón y queso.",
-            2500.0, True,
+            2500.0, True, "elaborado", 0,
             [("Comidas Preparadas", False), ("Empanadas", True)],
             [("Jamón cocido",    50.0, "g", False),
              ("Queso mozzarella", 50.0, "g", False)],
@@ -229,7 +230,7 @@ def _seed_productos(
         (
             "Sandwich Mixto",
             "Sandwich de jamón y queso.",
-            6000.0, True,
+            6000.0, True, "elaborado", 0,
             [("Comidas Preparadas", False), ("Sandwiches", True)],
             [("Pan lactal",      2.0, "u", False),
              ("Jamón cocido",   60.0, "g", False),
@@ -238,37 +239,39 @@ def _seed_productos(
         (
             "Cerveza 1L",
             "Cerveza rubia en botella de 1 litro.",
-            2500.0, True,
+            2500.0, True, "terminado", 60,
             [("Bebidas", False), ("Cervezas", True)],
-            [("Cerveza 1L", 1.0, "u", False)],
+            [],
         ),
         (
             "Jugo de Naranja",
             "Jugo exprimido natural.",
-            1800.0, True,
+            1800.0, True, "elaborado", 0,
             [("Bebidas", False), ("Jugos", True)],
             [("Jugo de naranja", 300.0, "mL", False)],
         ),
         (
             "Helado de Vainilla",
             "Porción de helado artesanal.",
-            3000.0, True,
+            3000.0, True, "elaborado", 0,
             [("Postres", False), ("Helados", True)],
             [("Helado vainilla", 200.0, "g", False)],
         ),
         (
             "Torta de Chocolate",
             "Porción de torta húmeda de chocolate.",
-            4500.0, True,
+            4500.0, True, "elaborado", 0,
             [("Postres", False), ("Tortas", True)],
             [("Huevo", 2.0, "u", False)],
         ),
     ]
 
-    for nombre, desc, precio, disponible, cat_defs, ing_defs in defs:
+    for nombre, desc, precio, disponible, tipo, stock_inicial, cat_defs, ing_defs in defs:
         p = Producto(
             nombre=nombre, descripcion=desc, precio_base=precio,
-            disponible=disponible, imagen_url=IMAGENES_PRODUCTOS.get(nombre),
+            disponible=disponible, tipo_producto=tipo,
+            stock_cantidad=stock_inicial,
+            imagen_url=IMAGENES_PRODUCTOS.get(nombre),
         )
         session.add(p)
         session.flush()

@@ -35,6 +35,7 @@ function mapProducto(p: any): Producto {
     tieneAlergenos,
     stockCantidad: p.stockCantidad ?? 0,
     disponible: p.disponible ?? true,
+    tipoProducto: (p.tipoProducto ?? "terminado") as "elaborado" | "terminado",
     unidadVentaId: p.unidadVentaId ?? null,
     categoriaIds,
     ingredientes,
@@ -128,19 +129,15 @@ export const productosApi = {
   },
 
   async crear(data: ProductoFormData): Promise<Producto> {
-    // 1. Crear el producto con los campos básicos
+    // Endpoint atómico: crea producto + categorías + ingredientes en una sola transacción.
+    // El backend valida que productos elaborados tengan al menos 1 ingrediente.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const base = await apiClient.post<any>("/admin/productos", outbound(data)).then(r => r.data);
-    const id: number = base.id;
-
-    // 2. Asignar categorías e ingredientes en paralelo
-    await Promise.all([
-      syncCategorias(id, data.categoriaIds, []),
-      syncIngredientes(id, data.ingredientes, []),
-    ]);
-
-    // 3. Devolver el detalle completo (con stock calculado)
-    return fetchDetalle(id);
+    const result = await apiClient.post<any>("/admin/productos/completo", {
+      ...outbound(data),
+      categoriaIds: data.categoriaIds,
+      ingredientes: data.ingredientes,
+    }).then(r => r.data);
+    return mapProducto(result);
   },
 
   async editar(id: number, data: Partial<ProductoFormData>): Promise<Producto> {
@@ -160,6 +157,13 @@ export const productosApi = {
     ]);
 
     return fetchDetalle(id);
+  },
+
+  ajustarStock(id: number, stockCantidad: number): Promise<Producto> {
+    return apiClient
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .patch<any>(`/admin/productos/${id}/stock`, { stockCantidad })
+      .then(r => mapProducto(r.data));
   },
 
   eliminar(id: number): Promise<void> {
