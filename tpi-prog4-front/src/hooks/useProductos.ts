@@ -12,6 +12,14 @@ export function useProductosQuery(filtros: FiltrosProductos = {}) {
   });
 }
 
+export function useProductosAdminQuery(filtros: FiltrosProductos = {}) {
+  return useQuery({
+    queryKey: [KEY, "admin", filtros],
+    queryFn: () => productosApi.listarAdmin(filtros),
+    staleTime: 1000 * 30,
+  });
+}
+
 export function useProductoDetalleQuery(id: number | null) {
   return useQuery({
     queryKey: [KEY, "detalle", id],
