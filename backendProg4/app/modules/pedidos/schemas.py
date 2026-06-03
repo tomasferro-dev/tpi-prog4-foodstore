@@ -42,6 +42,7 @@ class HistorialEstadoPublic(SQLModel):
     estado_desde: Optional[str]
     estado_hacia: str
     usuario_id: Optional[int]
+    usuario_nombre: Optional[str] = None   # nombre completo del actor (ej. "Juan García")
     motivo: Optional[str]
     created_at: datetime
 
@@ -92,3 +93,9 @@ class FormaPagoPublic(SQLModel):
     codigo: str
     descripcion: str
     habilitado: bool
+
+
+class ConfirmarCompraRequest(SQLModel):
+    forma_pago_codigo: str
+    direccion_id: Optional[int] = None
+    notas: Optional[str] = None

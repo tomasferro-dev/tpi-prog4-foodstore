@@ -1,6 +1,7 @@
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../stores/authStore";
 import DarkModeToggle from "./DarkModeToggle";
+import CarritoIcon from "./CarritoIcon";
 
 export default function Navbar() {
   const navigate = useNavigate();
@@ -19,8 +20,9 @@ export default function Navbar() {
         : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#2c2c2e]"
     }`;
 
-  const esAdminOStock = user?.roles.some((r) => ["ADMIN", "STOCK"].includes(r));
-  const esAdmin = user?.roles.includes("ADMIN");
+  const esAdminOStock   = user?.roles.some((r) => ["ADMIN", "STOCK"].includes(r));
+  const esAdminOPedidos = user?.roles.some((r) => ["ADMIN", "PEDIDOS"].includes(r));
+  const esAdmin         = user?.roles.includes("ADMIN");
 
   return (
     <header className="bg-white dark:bg-[#1c1c1e] border-b border-gray-200 dark:border-[#3a3a3c] shadow-sm">
@@ -33,6 +35,16 @@ export default function Navbar() {
           <NavLink to="/" className={linkClase} end>
             Catalogo
           </NavLink>
+          {user?.roles.includes("CLIENT") && (
+            <NavLink to="/mis-pedidos" className={linkClase}>
+              Mis Pedidos
+            </NavLink>
+          )}
+          {esAdminOPedidos && (
+            <NavLink to="/admin/pedidos" className={linkClase}>
+              Pedidos
+            </NavLink>
+          )}
           {esAdminOStock && (
             <NavLink to="/admin/productos" className={linkClase}>
               Productos
@@ -57,6 +69,7 @@ export default function Navbar() {
 
         <div className="flex items-center gap-3">
           <DarkModeToggle />
+          {user?.roles.includes("CLIENT") && <CarritoIcon />}
 
           {user ? (
             <>

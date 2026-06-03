@@ -22,9 +22,11 @@ class ConfigPrecioPublic(SQLModel):
     porcentaje_ganancia: float
     unidades_mes_estimadas: int
     costos: CostosPublic
+    costo_envio: float
 
 
 class ConfigPrecioUpdate(SQLModel):
     porcentaje_ganancia: Optional[float] = None
     unidades_mes_estimadas: Optional[int] = None
     costos: Optional[CostosUpdate] = None
+    costo_envio: Optional[float] = None

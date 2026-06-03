@@ -156,6 +156,7 @@ export interface ConfigPrecio {
   porcentajeGanancia: number;       // ej: 50 → ganancia del 50%
   unidadesMesEstimadas: number;     // produccion mensual estimada (para prorratear costos)
   costos: CostosOperativos;
+  costoEnvio: number;               // costo de envío fijo (pesos)
 }
 
 // ---------- Paginacion ----------

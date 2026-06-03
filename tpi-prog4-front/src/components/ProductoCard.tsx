@@ -1,22 +1,51 @@
+import { useState } from "react";
 import type { Producto, Categoria, UnidadMedida } from "../types";
+import AgregarAlCarritoModal from "./AgregarAlCarritoModal";
 
 interface Props {
   producto: Producto;
   categorias: Categoria[];
   esAdmin: boolean;
+  esCliente?: boolean;
   unidades?: UnidadMedida[];
   onEliminar?: (p: Producto) => void;
   onReactivar?: (p: Producto) => void;
   onEditar?: (p: Producto) => void;
   onAjustarStock?: (p: Producto) => void;
+  onAgregarAlCarrito?: (cantidad: number) => Promise<void>;
 }
 
 export default function ProductoCard({
-  producto, categorias, esAdmin, unidades = [],
-  onEliminar, onReactivar, onEditar, onAjustarStock,
+  producto,
+  categorias,
+  esAdmin,
+  esCliente = false,
+  unidades = [],
+  onEliminar,
+  onReactivar,
+  onEditar,
+  onAjustarStock,
+  onAgregarAlCarrito,
 }: Props) {
+  const [showModal, setShowModal] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
   const eliminado = producto.eliminadoEn !== null;
   const sinStock = producto.stockCantidad === 0;
+
+  const handleAgregarClick = async (cantidad: number) => {
+    setIsLoading(true);
+    try {
+      if (onAgregarAlCarrito) {
+        await onAgregarAlCarrito(cantidad);
+        setShowModal(false);
+      }
+    } catch (error) {
+      console.error("Error al agregar al carrito", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const nombresCategorias = producto.categoriaIds
     .map((id) => categorias.find((c) => c.id === id)?.nombre)
@@ -133,7 +162,27 @@ export default function ProductoCard({
             )}
           </div>
         )}
+
+        {esCliente && !eliminado && (
+          <button
+            type="button"
+            onClick={() => setShowModal(true)}
+            disabled={sinStock || !producto.disponible}
+            className="w-full mt-3 bg-[#34c759] dark:bg-[#30d158] hover:opacity-90 disabled:opacity-50 text-white text-sm font-semibold py-1.5 rounded-xl transition-opacity"
+          >
+            {sinStock ? "Sin Stock" : !producto.disponible ? "No Disponible" : "Agregar al Carrito"}
+          </button>
+        )}
       </div>
+
+      {/* Modal */}
+      <AgregarAlCarritoModal
+        producto={producto}
+        isOpen={showModal}
+        isLoading={isLoading}
+        onClose={() => setShowModal(false)}
+        onConfirm={handleAgregarClick}
+      />
     </div>
   );
 }

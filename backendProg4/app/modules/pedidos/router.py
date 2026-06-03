@@ -8,6 +8,7 @@ from app.modules.usuarios.models import UsuarioPublic
 from app.modules.pedidos.schemas import (
     PedidoCreate, PedidoPublic, PedidoConDetalle, PedidoList,
     PedidoUpdate, AvanzarEstadoRequest, EstadoPedidoPublic, FormaPagoPublic,
+    ItemPedidoRequest, ConfirmarCompraRequest,
 )
 from app.modules.pedidos.service import PedidoService
 
@@ -34,6 +35,57 @@ def list_formas_pago(
     _user: Annotated[UsuarioPublic, Depends(get_current_active_user)],
 ):
     return svc.list_formas_pago()
+
+
+# carrito del usuario logueado (solo CLIENT)
+
+@router.get("/actual", response_model=PedidoConDetalle | None)
+def get_carrito_activo(
+    svc: Annotated[PedidoService, Depends(get_service)],
+    user: Annotated[UsuarioPublic, Depends(require_role(["CLIENT"]))],
+):
+    """Obtiene el carrito activo del usuario. Retorna null si no existe."""
+    return svc.get_carrito_activo(user.id)
+
+
+@router.post("/items", response_model=PedidoConDetalle)
+def agregar_al_carrito(
+    item: ItemPedidoRequest,
+    svc: Annotated[PedidoService, Depends(get_service)],
+    user: Annotated[UsuarioPublic, Depends(require_role(["CLIENT"]))],
+):
+    """Agrega o actualiza un producto en el carrito del usuario."""
+    return svc.agregar_al_carrito(
+        usuario_id=user.id,
+        producto_id=item.producto_id,
+        cantidad=item.cantidad,
+        personalizacion=item.personalizacion,
+    )
+
+
+@router.delete("/items/{producto_id}", response_model=PedidoConDetalle | None)
+def eliminar_del_carrito(
+    producto_id: int,
+    svc: Annotated[PedidoService, Depends(get_service)],
+    user: Annotated[UsuarioPublic, Depends(require_role(["CLIENT"]))],
+):
+    """Elimina un producto del carrito. Retorna null si no hay carrito."""
+    return svc.eliminar_del_carrito(user.id, producto_id)
+
+
+@router.post("/confirmar", response_model=PedidoConDetalle)
+def confirmar_compra(
+    data: ConfirmarCompraRequest,
+    svc: Annotated[PedidoService, Depends(get_service)],
+    user: Annotated[UsuarioPublic, Depends(require_role(["CLIENT"]))],
+):
+    """Confirma el carrito, transicionando a estado 'confirmado'."""
+    return svc.confirmar_carrito(
+        usuario_id=user.id,
+        forma_pago_codigo=data.forma_pago_codigo,
+        direccion_id=data.direccion_id,
+        notas=data.notas,
+    )
 
 
 # pedidos del usuario logeado
@@ -104,7 +156,8 @@ def avanzar_estado(
 def list_all_pedidos(
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    estado: Annotated[str | None, Query()] = None,
     svc: PedidoService = Depends(get_service),
     _admin: UsuarioPublic = Depends(require_role(["ADMIN", "PEDIDOS"])),
 ):
-    return svc.list_all(offset=offset, limit=limit)
+    return svc.list_all(offset=offset, limit=limit, estado=estado)

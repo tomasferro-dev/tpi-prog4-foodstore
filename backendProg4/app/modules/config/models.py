@@ -14,4 +14,5 @@ class ConfigPrecio(SQLModel, table=True):
     costos_luz: float = Field(default=20000.0)
     costos_alquiler: float = Field(default=200000.0)
     costos_otros: float = Field(default=30000.0)
+    costo_envio: float = Field(default=50.0)
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

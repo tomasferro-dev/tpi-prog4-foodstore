@@ -16,6 +16,7 @@ def _to_public(cfg: ConfigPrecio) -> ConfigPrecioPublic:
             alquiler=cfg.costos_alquiler,
             otros=cfg.costos_otros,
         ),
+        costo_envio=cfg.costo_envio,
     )
 
 
@@ -52,6 +53,8 @@ class ConfigService:
                 cfg.costos_alquiler = data.costos.alquiler
             if data.costos.otros is not None:
                 cfg.costos_otros = data.costos.otros
+        if data.costo_envio is not None:
+            cfg.costo_envio = data.costo_envio
         cfg.updated_at = datetime.now(timezone.utc)
         self._session.add(cfg)
         self._session.commit()

@@ -83,6 +83,23 @@ export default function AdminConfigPage() {
           </div>
         </section>
 
+        {/* Configuracion de envio */}
+        <section className="bg-white dark:bg-[#1c1c1e] border border-gray-200 dark:border-[#3a3a3c] rounded-2xl p-5 shadow-sm">
+          <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-4">Configuracion de envio</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Costo de envío</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-sm">$</span>
+                <input type="number" min={0} step="0.01" value={form.costoEnvio}
+                  onChange={(e) => { setForm((f) => f ? { ...f, costoEnvio: Number(e.target.value) } : f); setGuardado(false); }}
+                  className={`${inputCls} pl-7`} />
+              </div>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Se agregará a cada pedido.</p>
+            </div>
+          </div>
+        </section>
+
         {/* Resumen formula */}
         <section className="bg-[#007aff]/5 dark:bg-[#0a84ff]/10 border border-[#007aff]/20 dark:border-[#0a84ff]/20 rounded-2xl p-5">
           <h2 className="text-sm font-semibold text-[#007aff] dark:text-[#0a84ff] mb-3">Como se calcula el precio sugerido</h2>

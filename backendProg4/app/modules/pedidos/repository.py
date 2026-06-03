@@ -29,9 +29,29 @@ class PedidoRepository(BaseRepository[Pedido]):
             .where(Pedido.deleted_at == None)
         ).all())
 
-    def count(self) -> int:
-        return len(self.session.exec(
-            select(Pedido).where(Pedido.deleted_at == None)
+    def count(self, estado: str | None = None) -> int:
+        stmt = select(Pedido).where(Pedido.deleted_at == None)
+        if estado:
+            stmt = stmt.where(Pedido.estado_codigo == estado)
+        return len(self.session.exec(stmt).all())
+
+    def get_carrito_activo(self, usuario_id: int) -> Pedido | None:
+        """Obtiene el carrito activo (estado 'pendiente') del usuario."""
+        return self.session.exec(
+            select(Pedido)
+            .where(Pedido.usuario_id == usuario_id)
+            .where(Pedido.estado_codigo == "pendiente")
+            .where(Pedido.deleted_at == None)
+            .order_by(Pedido.created_at.desc())
+        ).first()
+
+    def get_active(self, offset: int = 0, limit: int = 20, estado: str | None = None) -> list[Pedido]:
+        """Obtiene pedidos no deletados, con filtro opcional por estado."""
+        stmt = select(Pedido).where(Pedido.deleted_at == None)
+        if estado:
+            stmt = stmt.where(Pedido.estado_codigo == estado)
+        return list(self.session.exec(
+            stmt.order_by(Pedido.created_at.desc()).offset(offset).limit(limit)
         ).all())
 
 

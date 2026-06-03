@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
+    # Mercado Pago
+    MP_ACCESS_TOKEN: str = ""
+    FRONTEND_URL: str = "http://localhost:5173"
+    BACKEND_URL: str = "http://localhost:8000"
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

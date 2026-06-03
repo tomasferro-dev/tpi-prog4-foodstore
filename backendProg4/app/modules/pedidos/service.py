@@ -12,6 +12,7 @@ from app.modules.pedidos.schemas import (
     AvanzarEstadoRequest, EstadoPedidoPublic, FormaPagoPublic,
 )
 from app.modules.pedidos.unit_of_work import PedidoUnitOfWork
+from app.modules.config.service import ConfigService
 
 # mapa de transiciones válidas de la FSM
 FSM: dict[str, list[str]] = {
@@ -40,7 +41,31 @@ class PedidoService:
 
     def _build_detalle(self, uow, pedido: Pedido) -> PedidoConDetalle:
         items = uow.detalles.get_by_pedido(pedido.id)
-        historial = uow.historial.get_by_pedido(pedido.id)
+        historial_entries = uow.historial.get_by_pedido(pedido.id)
+
+        # Batch lookup de nombres — un solo get por usuario único, sin N+1
+        user_ids = {h.usuario_id for h in historial_entries if h.usuario_id is not None}
+        nombre_por_id: dict[int, str] = {}
+        for uid in user_ids:
+            u = uow.usuarios.get_by_id(uid)
+            if u:
+                nombre_por_id[uid] = (
+                    f"{u.nombre} {u.apellido}".strip() if u.apellido else u.nombre
+                )
+
+        historial = [
+            HistorialEstadoPublic(
+                id=h.id,
+                estado_desde=h.estado_desde,
+                estado_hacia=h.estado_hacia,
+                usuario_id=h.usuario_id,
+                usuario_nombre=nombre_por_id.get(h.usuario_id) if h.usuario_id is not None else None,
+                motivo=h.motivo,
+                created_at=h.created_at,
+            )
+            for h in historial_entries
+        ]
+
         return PedidoConDetalle(
             id=pedido.id,
             usuario_id=pedido.usuario_id,
@@ -54,7 +79,7 @@ class PedidoService:
             notas=pedido.notas,
             created_at=pedido.created_at,
             items=[DetallePedidoPublic.model_validate(i) for i in items],
-            historial=[HistorialEstadoPublic.model_validate(h) for h in historial],
+            historial=historial,
         )
 
     def _descontar_stock_ingredientes(self, uow, producto_id: int, cantidad_productos: int) -> None:
@@ -198,10 +223,10 @@ class PedidoService:
             total=total,
         )
 
-    def list_all(self, offset: int, limit: int) -> PedidoList:
+    def list_all(self, offset: int, limit: int, estado: str | None = None) -> PedidoList:
         with PedidoUnitOfWork(self._session) as uow:
-            pedidos = uow.pedidos.get_active(offset=offset, limit=limit)
-            total = uow.pedidos.count()
+            pedidos = uow.pedidos.get_active(offset=offset, limit=limit, estado=estado)
+            total = uow.pedidos.count(estado=estado)
         return PedidoList(
             data=[PedidoPublic.model_validate(p) for p in pedidos],
             total=total,
@@ -271,4 +296,185 @@ class PedidoService:
         with PedidoUnitOfWork(self._session) as uow:
             formas = uow.formas_pago.get_habilitadas()
             result = [FormaPagoPublic.model_validate(f) for f in formas]
+        return result
+
+    def _get_costo_envio(self, uow) -> Decimal:
+        """Obtiene el costo de envío desde la configuración."""
+        config_svc = ConfigService(self._session)
+        config = config_svc.get()
+        return Decimal(str(config.costo_envio))
+
+    def get_carrito_activo(self, usuario_id: int) -> PedidoConDetalle | None:
+        """Obtiene el carrito activo (pendiente) del usuario, o None si no existe."""
+        with PedidoUnitOfWork(self._session) as uow:
+            pedido = uow.pedidos.get_carrito_activo(usuario_id)
+            if not pedido:
+                return None
+            return self._build_detalle(uow, pedido)
+
+    def agregar_al_carrito(
+        self,
+        usuario_id: int,
+        producto_id: int,
+        cantidad: int,
+        personalizacion: list[int] | None = None,
+    ) -> PedidoConDetalle:
+        """
+        Agrega o actualiza un producto en el carrito del usuario.
+        Si no existe carrito activo, lo crea.
+        """
+        with PedidoUnitOfWork(self._session) as uow:
+            # Obtener o crear carrito
+            pedido = uow.pedidos.get_carrito_activo(usuario_id)
+
+            if not pedido:
+                # Crear nuevo carrito
+                pedido = Pedido(
+                    usuario_id=usuario_id,
+                    estado_codigo="pendiente",
+                    forma_pago_codigo="EFECTIVO",  # default
+                    subtotal=Decimal("0.00"),
+                    descuento=Decimal("0.00"),
+                    costo_envio=Decimal("0.00"),
+                    total=Decimal("0.00"),
+                )
+                uow.pedidos.add(pedido)
+                self._session.flush()
+
+                # Primer historial
+                uow.historial.add(HistorialEstadoPedido(
+                    pedido_id=pedido.id,
+                    estado_desde=None,
+                    estado_hacia="pendiente",
+                    usuario_id=usuario_id,
+                ))
+
+            # Validar producto
+            producto = uow.productos.get_by_id(producto_id)
+            if not producto or producto.deleted_at is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Producto id={producto_id} no encontrado"
+                )
+            if not producto.disponible:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Producto '{producto.nombre}' no está disponible"
+                )
+
+            # Buscar si ya existe item en el carrito
+            detalle = uow.detalles.get_by_ids(pedido.id, producto_id)
+
+            if detalle:
+                # Actualizar cantidad
+                detalle.cantidad = cantidad
+            else:
+                # Crear nuevo detalle
+                detalle = DetallePedido(
+                    pedido_id=pedido.id,
+                    producto_id=producto_id,
+                    cantidad=cantidad,
+                    nombre_snapshot=producto.nombre,
+                    precio_snapshot=Decimal(str(producto.precio_base)),
+                    subtotal_snap=Decimal(str(producto.precio_base)) * cantidad,
+                    personalizacion=personalizacion,
+                )
+
+            uow.detalles.add(detalle)
+
+            # Recalcular totales del pedido
+            self._recalcular_totales(uow, pedido.id)
+
+            result = self._build_detalle(uow, pedido)
+        return result
+
+    def eliminar_del_carrito(self, usuario_id: int, producto_id: int) -> PedidoConDetalle | None:
+        """Elimina un producto del carrito del usuario."""
+        with PedidoUnitOfWork(self._session) as uow:
+            pedido = uow.pedidos.get_carrito_activo(usuario_id)
+            if not pedido:
+                return None
+
+            detalle = uow.detalles.get_by_ids(pedido.id, producto_id)
+            if detalle:
+                self._session.delete(detalle)
+
+            # Recalcular totales
+            self._recalcular_totales(uow, pedido.id)
+
+            result = self._build_detalle(uow, pedido)
+        return result
+
+    def _recalcular_totales(self, uow, pedido_id: int) -> None:
+        """Recalcula subtotal y total de un pedido basado en sus detalles."""
+        detalles = uow.detalles.get_by_pedido(pedido_id)
+        pedido = uow.pedidos.get_by_id(pedido_id)
+
+        subtotal = sum(Decimal(str(d.subtotal_snap)) for d in detalles)
+        costo_envio = self._get_costo_envio(uow)
+
+        pedido.subtotal = subtotal
+        pedido.costo_envio = costo_envio
+        pedido.total = subtotal + costo_envio
+        pedido.updated_at = datetime.now(timezone.utc)
+
+        uow.pedidos.add(pedido)
+
+    def confirmar_carrito(
+        self,
+        usuario_id: int,
+        forma_pago_codigo: str,
+        direccion_id: int | None = None,
+        notas: str | None = None,
+    ) -> PedidoConDetalle:
+        """Confirma el carrito, transicionando a estado 'confirmado'."""
+        with PedidoUnitOfWork(self._session) as uow:
+            pedido = uow.pedidos.get_carrito_activo(usuario_id)
+            if not pedido:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="No hay carrito activo para confirmar"
+                )
+
+            if len(uow.detalles.get_by_pedido(pedido.id)) == 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="No puedes confirmar un carrito vacío"
+                )
+
+            # Validar forma de pago
+            forma = uow.formas_pago.get_by_codigo(forma_pago_codigo)
+            if not forma or not forma.habilitado:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Forma de pago '{forma_pago_codigo}' no disponible"
+                )
+
+            # Actualizar pedido
+            pedido.forma_pago_codigo = forma_pago_codigo
+            pedido.direccion_id = direccion_id
+            pedido.notas = notas
+            pedido.estado_codigo = "confirmado"
+            pedido.updated_at = datetime.now(timezone.utc)
+            uow.pedidos.add(pedido)
+
+            # Registrar transición de estado
+            uow.historial.add(HistorialEstadoPedido(
+                pedido_id=pedido.id,
+                estado_desde="pendiente",
+                estado_hacia="confirmado",
+                usuario_id=usuario_id,
+            ))
+
+            # Descontar stock de productos
+            detalles = uow.detalles.get_by_pedido(pedido.id)
+            for detalle in detalles:
+                producto = uow.productos.get_by_id(detalle.producto_id)
+                if producto:
+                    producto.stock_cantidad -= detalle.cantidad
+                    uow.productos.add(producto)
+                    # Descontar ingredientes
+                    self._descontar_stock_ingredientes(uow, detalle.producto_id, detalle.cantidad)
+
+            result = self._build_detalle(uow, pedido)
         return result

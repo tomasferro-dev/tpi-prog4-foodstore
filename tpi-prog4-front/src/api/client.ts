@@ -39,8 +39,10 @@ const RESPONSE_RENAMES: Record<string, string> = {
   deletedAt: "eliminadoEn",
 };
 
+// baseURL vacío → URLs relativas → el proxy de Vite las redirige al backend.
+// Funciona igual en localhost y vía ngrok sin cambiar nada.
 export const apiClient = axios.create({
-  baseURL: "http://localhost:8000",
+  baseURL: "",
   headers: { "Content-Type": "application/json" },
 });
 

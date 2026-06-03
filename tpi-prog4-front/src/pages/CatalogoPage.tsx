@@ -4,6 +4,9 @@ import { useCategoriasQuery } from "../hooks/useCategorias";
 import { useUnidadesMedidaQuery } from "../hooks/useUnidadesMedida";
 import ProductoCard from "../components/ProductoCard";
 import Pagination from "../components/Pagination";
+import { useAuthStore } from "../stores/authStore";
+import { useCartStore } from "../stores/cartStore";
+import { agregarAlCarrito } from "../api/pedidos.api";
 import type { Categoria, FiltrosProductos, Producto } from "../types";
 
 const ITEMS_POR_PAGINA = 8;
@@ -13,10 +16,30 @@ export default function CatalogoPage() {
     busqueda: "", skip: 0, limit: ITEMS_POR_PAGINA, disponible: true,
   });
   const [sinAlergenos, setSinAlergenos] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const { data, isLoading, isError } = useProductosQuery(filtros);
   const { data: categorias = [] } = useCategoriasQuery();
   const { data: unidades = [] } = useUnidadesMedidaQuery();
+
+  const user = useAuthStore((s) => s.user);
+  const setCarrito = useCartStore((s) => s.setCarrito);
+  const esCliente = user?.roles.includes("CLIENT") ?? false;
+
+  const handleAgregarAlCarrito = async (cantidad: number, producto: Producto) => {
+    try {
+      const result = await agregarAlCarrito({
+        productoId: producto.id,
+        cantidad,
+      });
+      setCarrito(result);
+      setToastMessage(`${producto.nombre} agregado al carrito`);
+      setTimeout(() => setToastMessage(null), 2000);
+    } catch (error: any) {
+      setToastMessage(error?.detail || "Error al agregar al carrito");
+      setTimeout(() => setToastMessage(null), 3000);
+    }
+  };
 
   const cambiarFiltro = (parcial: Partial<FiltrosProductos>) =>
     setFiltros((f) => ({ ...f, ...parcial, skip: 0 }));
@@ -102,7 +125,17 @@ export default function CatalogoPage() {
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {items.map((p: Producto) => (
-              <ProductoCard key={p.id} producto={p} categorias={categorias} unidades={unidades} esAdmin={false} />
+              <ProductoCard
+                key={p.id}
+                producto={p}
+                categorias={categorias}
+                unidades={unidades}
+                esAdmin={false}
+                esCliente={esCliente}
+                onAgregarAlCarrito={(cantidad) =>
+                  handleAgregarAlCarrito(cantidad, p)
+                }
+              />
             ))}
           </div>
           {data && (
@@ -110,6 +143,13 @@ export default function CatalogoPage() {
               limit={data.limit} onCambioPagina={(skip) => setFiltros((f) => ({ ...f, skip }))} />
           )}
         </>
+      )}
+
+      {/* Toast */}
+      {toastMessage && (
+        <div className="fixed bottom-4 right-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 px-4 py-3 rounded-lg shadow-lg z-50">
+          {toastMessage}
+        </div>
       )}
     </div>
   );

@@ -6,6 +6,7 @@ from app.modules.pedidos.repository import (
 )
 from app.modules.productos.repository import ProductoRepository, ProductoIngredienteRepository
 from app.modules.ingredientes.repository import IngredienteRepository
+from app.modules.usuarios.repository import UsuarioRepository
 
 
 class PedidoUnitOfWork(UnitOfWork):
@@ -18,6 +19,6 @@ class PedidoUnitOfWork(UnitOfWork):
         self.formas_pago = FormaPagoRepository(session)
         self.pagos = PagoRepository(session)
         self.productos = ProductoRepository(session)
-        # necesitamos el repo de ingredientes para descontar su stock al crear pedidos
         self.producto_ingredientes = ProductoIngredienteRepository(session)
         self.ingredientes = IngredienteRepository(session)
+        self.usuarios = UsuarioRepository(session)
