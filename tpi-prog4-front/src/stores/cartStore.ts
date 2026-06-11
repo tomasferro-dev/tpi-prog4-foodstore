@@ -53,7 +53,7 @@ export const useCartStore = create<CartStore>()(
               cantidad,
               precio_unitario: precio,
               subtotal,
-              personalizacion: item.personalizacion,
+              personalizacion: item.personalizacion ?? undefined,
             };
           });
 

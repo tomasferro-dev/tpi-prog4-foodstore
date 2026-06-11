@@ -187,6 +187,7 @@ class ProductoService:
         precio_min: float | None = None,
         precio_max: float | None = None,
         disponible: bool | None = None,
+        sin_alergenos: bool | None = None,
         include_deleted: bool = False,
     ) -> ProductoList:
         with ProductoUnitOfWork(self._session) as uow:
@@ -194,12 +195,14 @@ class ProductoService:
                 offset=offset, limit=limit,
                 busqueda=busqueda, categoria_id=categoria_id,
                 precio_min=precio_min, precio_max=precio_max,
-                disponible=disponible, include_deleted=include_deleted,
+                disponible=disponible, sin_alergenos=sin_alergenos,
+                include_deleted=include_deleted,
             )
             total = uow.productos.count_filtered(
                 busqueda=busqueda, categoria_id=categoria_id,
                 precio_min=precio_min, precio_max=precio_max,
-                disponible=disponible, include_deleted=include_deleted,
+                disponible=disponible, sin_alergenos=sin_alergenos,
+                include_deleted=include_deleted,
             )
             items = []
             for p in productos:

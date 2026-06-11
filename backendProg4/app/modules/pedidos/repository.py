@@ -16,6 +16,7 @@ class PedidoRepository(BaseRepository[Pedido]):
             select(Pedido)
             .where(Pedido.usuario_id == usuario_id)
             .where(Pedido.deleted_at == None)
+            .order_by(Pedido.created_at.desc())
             .offset(offset).limit(limit)
         ).all())
 
@@ -54,6 +55,16 @@ class PedidoRepository(BaseRepository[Pedido]):
             stmt.order_by(Pedido.created_at.desc()).offset(offset).limit(limit)
         ).all())
 
+    def get_reales(self) -> list[Pedido]:
+        """Pedidos efectivamente generados (salieron del carrito): cualquier estado
+        distinto de 'pendiente', no eliminados. Ordenados del más reciente al más antiguo."""
+        return list(self.session.exec(
+            select(Pedido)
+            .where(Pedido.deleted_at == None)
+            .where(Pedido.estado_codigo != "pendiente")
+            .order_by(Pedido.created_at.desc())
+        ).all())
+
 
 class DetallePedidoRepository(BaseRepository[DetallePedido]):
     def __init__(self, session: Session) -> None:
@@ -82,6 +93,17 @@ class HistorialEstadoRepository(BaseRepository[HistorialEstadoPedido]):
             .where(HistorialEstadoPedido.pedido_id == pedido_id)
             .order_by(HistorialEstadoPedido.created_at)
         ).all())
+
+    def get_ultima(self, pedido_id: int) -> HistorialEstadoPedido | None:
+        """Última transición registrada para el pedido (la más reciente)."""
+        return self.session.exec(
+            select(HistorialEstadoPedido)
+            .where(HistorialEstadoPedido.pedido_id == pedido_id)
+            .order_by(
+                HistorialEstadoPedido.created_at.desc(),
+                HistorialEstadoPedido.id.desc(),
+            )
+        ).first()
 
 
 class EstadoPedidoRepository(BaseRepository[EstadoPedido]):

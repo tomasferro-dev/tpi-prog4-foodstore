@@ -9,7 +9,8 @@ from app.core.security import (
 )
 from app.modules.usuarios.models import (
     Usuario, RefreshToken, UsuarioRol,
-    UsuarioCreate, UsuarioPublic, LoginResponse, RefreshResponse,
+    UsuarioCreate, AdminUsuarioCreate, AdminUsuarioUpdate, UsuarioPublic,
+    LoginResponse, RefreshResponse,
     RolPublic, AsignarRolRequest,
 )
 from app.modules.usuarios.unit_of_work import UsuarioUnitOfWork
@@ -84,6 +85,93 @@ class UsuarioService:
             expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
             user=user_public,
         )
+
+    def admin_create(self, data: AdminUsuarioCreate, creado_por_id: int) -> UsuarioPublic:
+        """Crea un usuario con email/contraseña y le asigna los roles indicados.
+        No genera tokens: el admin que invoca mantiene su propia sesión."""
+        with UsuarioUnitOfWork(self._session) as uow:
+            if uow.usuarios.get_by_email(data.email):
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                                    detail="El email ya está registrado")
+
+            # validamos los roles antes de crear nada
+            roles = list(dict.fromkeys(data.roles))  # dedup conservando orden
+            if not roles:
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                    detail="Debe asignar al menos un rol")
+            for codigo in roles:
+                if not uow.roles.get_by_codigo(codigo):
+                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                        detail=f"Rol '{codigo}' no existe")
+
+            user = Usuario(
+                nombre=data.nombre,
+                apellido=data.apellido,
+                email=data.email,
+                celular=data.celular,
+                hashed_password=hash_password(data.password),
+            )
+            uow.usuarios.add(user)  # flush interno → user.id disponible
+
+            for codigo in roles:
+                uow.usuario_roles.add(UsuarioRol(
+                    usuario_id=user.id,
+                    rol_codigo=codigo,
+                    asignado_por_id=creado_por_id,
+                ))
+
+            result = self._build_usuario_public(uow, user)
+        return result
+
+    def admin_update(self, user_id: int, data: AdminUsuarioUpdate) -> UsuarioPublic:
+        """Actualiza los datos de un usuario. Solo modifica los campos presentes.
+        Si `roles` viene presente, reemplaza el set completo de roles."""
+        with UsuarioUnitOfWork(self._session) as uow:
+            user = uow.usuarios.get_by_id(user_id)
+            if not user:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                    detail="Usuario no encontrado")
+
+            fields = data.model_dump(exclude_unset=True)
+
+            if "email" in fields and fields["email"] != user.email:
+                existente = uow.usuarios.get_by_email(fields["email"])
+                if existente and existente.id != user.id:
+                    raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                                        detail="El email ya está registrado")
+
+            # validamos los roles antes de tocar nada
+            nuevos_roles = None
+            if "roles" in fields:
+                nuevos_roles = list(dict.fromkeys(fields["roles"] or []))
+                if not nuevos_roles:
+                    raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                        detail="El usuario debe tener al menos un rol")
+                for codigo in nuevos_roles:
+                    if not uow.roles.get_by_codigo(codigo):
+                        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                            detail=f"Rol '{codigo}' no existe")
+
+            for campo in ("nombre", "apellido", "email", "celular"):
+                if campo in fields:
+                    setattr(user, campo, fields[campo])
+            if fields.get("password"):
+                user.hashed_password = hash_password(fields["password"])
+            user.updated_at = datetime.now(timezone.utc)
+            uow.usuarios.add(user)
+
+            if nuevos_roles is not None:
+                actuales = set(uow.usuario_roles.get_roles_de_usuario(user.id))
+                deseados = set(nuevos_roles)
+                for codigo in actuales - deseados:
+                    asignacion = uow.usuario_roles.get_asignacion(user.id, codigo)
+                    if asignacion:
+                        uow.usuario_roles.remove_asignacion(asignacion)
+                for codigo in deseados - actuales:
+                    uow.usuario_roles.add(UsuarioRol(usuario_id=user.id, rol_codigo=codigo))
+
+            result = self._build_usuario_public(uow, user)
+        return result
 
     def authenticate(self, email: str, password: str) -> LoginResponse:
         with UsuarioUnitOfWork(self._session) as uow:

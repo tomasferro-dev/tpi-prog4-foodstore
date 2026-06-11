@@ -3,6 +3,7 @@ from sqlmodel import Session, select
 from sqlalchemy.orm import selectinload
 from app.core.repository import BaseRepository
 from app.modules.productos.models import Producto, ProductoCategoria, ProductoIngrediente
+from app.modules.ingredientes.models import Ingrediente
 
 
 class ProductoRepository(BaseRepository[Producto]):
@@ -21,6 +22,38 @@ class ProductoRepository(BaseRepository[Producto]):
             stmt = stmt.where(Producto.deleted_at == None)
         return stmt
 
+    @staticmethod
+    def _apply_filtros(
+        stmt,
+        busqueda: Optional[str],
+        categoria_id: Optional[int],
+        precio_min: Optional[float],
+        precio_max: Optional[float],
+        disponible: Optional[bool],
+        sin_alergenos: Optional[bool],
+    ):
+        if busqueda:
+            stmt = stmt.where(Producto.nombre.ilike(f"%{busqueda}%"))
+        if precio_min is not None:
+            stmt = stmt.where(Producto.precio_base >= precio_min)
+        if precio_max is not None:
+            stmt = stmt.where(Producto.precio_base <= precio_max)
+        if disponible is not None:
+            stmt = stmt.where(Producto.disponible == disponible)
+        if categoria_id is not None:
+            stmt = stmt.join(ProductoCategoria, Producto.id == ProductoCategoria.producto_id).where(
+                ProductoCategoria.categoria_id == categoria_id
+            )
+        if sin_alergenos:
+            # excluye productos que tengan al menos un ingrediente marcado como alergeno
+            con_alergeno = (
+                select(ProductoIngrediente.producto_id)
+                .join(Ingrediente, ProductoIngrediente.ingrediente_id == Ingrediente.id)
+                .where(Ingrediente.es_alergeno == True)
+            )
+            stmt = stmt.where(Producto.id.not_in(con_alergeno))
+        return stmt
+
     def get_filtered(
         self,
         offset: int = 0,
@@ -30,21 +63,13 @@ class ProductoRepository(BaseRepository[Producto]):
         precio_min: Optional[float] = None,
         precio_max: Optional[float] = None,
         disponible: Optional[bool] = None,
+        sin_alergenos: Optional[bool] = None,
         include_deleted: bool = False,
     ) -> list[Producto]:
-        stmt = self._base_stmt(include_deleted)
-        if busqueda:
-            stmt = stmt.where(Producto.nombre.ilike(f"%{busqueda}%"))
-        if precio_min is not None:
-            stmt = stmt.where(Producto.precio_base >= precio_min)
-        if precio_max is not None:
-            stmt = stmt.where(Producto.precio_base <= precio_max)
-        if disponible is not None:
-            stmt = stmt.where(Producto.disponible == disponible)
-        if categoria_id is not None:
-            stmt = stmt.join(ProductoCategoria, Producto.id == ProductoCategoria.producto_id).where(
-                ProductoCategoria.categoria_id == categoria_id
-            )
+        stmt = self._apply_filtros(
+            self._base_stmt(include_deleted),
+            busqueda, categoria_id, precio_min, precio_max, disponible, sin_alergenos,
+        )
         return list(self.session.exec(stmt.offset(offset).limit(limit)).all())
 
     def count_filtered(
@@ -54,23 +79,15 @@ class ProductoRepository(BaseRepository[Producto]):
         precio_min: Optional[float] = None,
         precio_max: Optional[float] = None,
         disponible: Optional[bool] = None,
+        sin_alergenos: Optional[bool] = None,
         include_deleted: bool = False,
     ) -> int:
         stmt = select(Producto)
         if not include_deleted:
             stmt = stmt.where(Producto.deleted_at == None)
-        if busqueda:
-            stmt = stmt.where(Producto.nombre.ilike(f"%{busqueda}%"))
-        if precio_min is not None:
-            stmt = stmt.where(Producto.precio_base >= precio_min)
-        if precio_max is not None:
-            stmt = stmt.where(Producto.precio_base <= precio_max)
-        if disponible is not None:
-            stmt = stmt.where(Producto.disponible == disponible)
-        if categoria_id is not None:
-            stmt = stmt.join(ProductoCategoria, Producto.id == ProductoCategoria.producto_id).where(
-                ProductoCategoria.categoria_id == categoria_id
-            )
+        stmt = self._apply_filtros(
+            stmt, busqueda, categoria_id, precio_min, precio_max, disponible, sin_alergenos,
+        )
         return len(self.session.exec(stmt).all())
 
     def get_by_id_con_detalle(self, producto_id: int) -> Producto | None:

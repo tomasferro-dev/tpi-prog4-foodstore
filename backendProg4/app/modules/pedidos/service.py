@@ -10,6 +10,7 @@ from app.modules.pedidos.schemas import (
     PedidoCreate, PedidoPublic, PedidoConDetalle, PedidoList,
     DetallePedidoPublic, HistorialEstadoPublic,
     AvanzarEstadoRequest, EstadoPedidoPublic, FormaPagoPublic,
+    DashboardResumen, DashboardPedidoItem,
 )
 from app.modules.pedidos.unit_of_work import PedidoUnitOfWork
 from app.modules.config.service import ConfigService
@@ -26,6 +27,11 @@ FSM: dict[str, list[str]] = {
 
 # cancelar desde en_preparacion requiere rol especial
 CANCELACION_RESTRINGIDA = {"en_preparacion"}
+
+# estados en los que el stock del pedido está descontado.
+# El stock se reserva al confirmar y se mantiene descontado mientras el pedido
+# avanza; vuelve al inventario al cancelar (o al revertir una confirmación).
+ESTADOS_STOCK_DESCONTADO = {"confirmado", "en_preparacion", "en_camino", "entregado"}
 
 
 class PedidoService:
@@ -110,6 +116,56 @@ class PedidoService:
 
             ingrediente.stock_cantidad -= cantidad_a_descontar
             uow.ingredientes.add(ingrediente)
+
+    def _restaurar_stock_ingredientes(self, uow, producto_id: int, cantidad_productos: int) -> None:
+        """Devuelve al inventario el stock de ingredientes consumido por el producto.
+
+        Es la operación inversa de `_descontar_stock_ingredientes`: por cada
+        ingrediente del producto, suma la cantidad usada * unidades del producto.
+        """
+        ingredientes_del_producto = uow.producto_ingredientes.get_by_producto(producto_id)
+
+        for pi in ingredientes_del_producto:
+            ingrediente = uow.ingredientes.get_by_id(pi.ingrediente_id)
+            if not ingrediente:
+                continue
+            ingrediente.stock_cantidad += pi.cantidad * cantidad_productos
+            uow.ingredientes.add(ingrediente)
+
+    def _descontar_stock_pedido(self, uow, pedido_id: int) -> None:
+        """Descuenta del inventario el stock (producto + ingredientes) de todo el pedido."""
+        for detalle in uow.detalles.get_by_pedido(pedido_id):
+            producto = uow.productos.get_by_id(detalle.producto_id)
+            if producto:
+                producto.stock_cantidad -= detalle.cantidad
+                uow.productos.add(producto)
+                self._descontar_stock_ingredientes(uow, detalle.producto_id, detalle.cantidad)
+
+    def _restaurar_stock_pedido(self, uow, pedido_id: int) -> None:
+        """Devuelve al inventario el stock (producto + ingredientes) de todo el pedido."""
+        for detalle in uow.detalles.get_by_pedido(pedido_id):
+            producto = uow.productos.get_by_id(detalle.producto_id)
+            if producto:
+                producto.stock_cantidad += detalle.cantidad
+                uow.productos.add(producto)
+            self._restaurar_stock_ingredientes(uow, detalle.producto_id, detalle.cantidad)
+
+    def _ajustar_stock_por_transicion(
+        self, uow, pedido_id: int, estado_desde: str, estado_hacia: str
+    ) -> None:
+        """Ajusta el inventario según el cambio de estado, usando el invariante
+        de `ESTADOS_STOCK_DESCONTADO`:
+
+        - entra a un estado con stock descontado  → descuenta (ej: confirmar)
+        - sale  de un estado con stock descontado  → restaura (ej: cancelar)
+        - transición entre estados del mismo grupo → sin cambios
+        """
+        antes = estado_desde in ESTADOS_STOCK_DESCONTADO
+        despues = estado_hacia in ESTADOS_STOCK_DESCONTADO
+        if not antes and despues:
+            self._descontar_stock_pedido(uow, pedido_id)
+        elif antes and not despues:
+            self._restaurar_stock_pedido(uow, pedido_id)
 
     def create(self, data: PedidoCreate, usuario_id: int) -> PedidoConDetalle:
         with PedidoUnitOfWork(self._session) as uow:
@@ -270,6 +326,9 @@ class PedidoService:
                     detail="Se requiere un motivo para cancelar el pedido",
                 )
 
+            # ajustamos el inventario según la transición (ej: cancelar restaura stock)
+            self._ajustar_stock_por_transicion(uow, pedido.id, estado_actual, estado_hacia)
+
             pedido.estado_codigo = estado_hacia
             pedido.updated_at = datetime.now(timezone.utc)
             uow.pedidos.add(pedido)
@@ -284,6 +343,82 @@ class PedidoService:
             ))
 
             result = self._build_detalle(uow, pedido)
+        return result
+
+    def revertir_estado(
+        self,
+        pedido_id: int,
+        usuario_id: int,
+        motivo: str | None = None,
+    ) -> PedidoConDetalle:
+        """Deshace la última transición de estado, volviendo el pedido a su estado previo.
+
+        Solo revierte el último cambio registrado en el historial (no transiciones
+        arbitrarias). El historial es append-only: la reversión se registra como una
+        nueva entrada que documenta el cambio inverso.
+        """
+        with PedidoUnitOfWork(self._session) as uow:
+            pedido = self._get_or_404(uow, pedido_id)
+
+            ultima = uow.historial.get_ultima(pedido.id)
+            if ultima is None or ultima.estado_desde is None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="No hay un cambio de estado previo para deshacer",
+                )
+
+            # solo permitimos deshacer la última acción: el estado actual debe
+            # coincidir con el destino de la última transición registrada
+            if ultima.estado_hacia != pedido.estado_codigo:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="El estado del pedido cambió; ya no se puede deshacer la última acción",
+                )
+
+            estado_actual = pedido.estado_codigo
+            estado_previo = ultima.estado_desde
+
+            # ajustamos el inventario de forma simétrica al deshacer:
+            # deshacer una cancelación vuelve a descontar; deshacer una confirmación restaura
+            self._ajustar_stock_por_transicion(uow, pedido.id, estado_actual, estado_previo)
+
+            pedido.estado_codigo = estado_previo
+            pedido.updated_at = datetime.now(timezone.utc)
+            uow.pedidos.add(pedido)
+
+            uow.historial.add(HistorialEstadoPedido(
+                pedido_id=pedido.id,
+                estado_desde=estado_actual,
+                estado_hacia=estado_previo,
+                usuario_id=usuario_id,
+                motivo=motivo or f"Reversión: '{estado_actual}' → '{estado_previo}'",
+            ))
+
+            result = self._build_detalle(uow, pedido)
+        return result
+
+    def dashboard_resumen(self) -> DashboardResumen:
+        """Resumen para el panel de administrador: cantidad de pedidos generados,
+        ingresos totales y el detalle de cada pedido con su ingreso."""
+        with PedidoUnitOfWork(self._session) as uow:
+            pedidos = uow.pedidos.get_reales()
+            ingresos_total = sum((p.total for p in pedidos), Decimal("0.00"))
+            items = [
+                DashboardPedidoItem(
+                    id=p.id,
+                    usuario_id=p.usuario_id,
+                    estado_codigo=p.estado_codigo,
+                    forma_pago_codigo=p.forma_pago_codigo,
+                    total=p.total,
+                    created_at=p.created_at,
+                )
+                for p in pedidos
+            ]
+            result = DashboardResumen(
+                total_pedidos=len(pedidos),
+                ingresos_total=ingresos_total,
+                pedidos=items,
+            )
         return result
 
     def list_estados(self) -> list[EstadoPedidoPublic]:

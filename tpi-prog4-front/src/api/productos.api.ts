@@ -54,13 +54,14 @@ function outbound(data: Partial<ProductoFormData>) {
 
 /** Convierte los filtros del frontend al formato que espera el backend. */
 function toBackendParams(filtros: FiltrosProductos) {
-  const { skip, categoriaId, precioMin, precioMax, incluirEliminados, ...rest } = filtros;
+  const { skip, categoriaId, precioMin, precioMax, sinAlergenos, incluirEliminados, ...rest } = filtros;
   return {
     ...rest,
     offset: skip ?? 0,
     ...(categoriaId !== undefined && { categoria_id: categoriaId }),
     ...(precioMin !== undefined && { precio_min: precioMin }),
     ...(precioMax !== undefined && { precio_max: precioMax }),
+    ...(sinAlergenos !== undefined && { sin_alergenos: sinAlergenos }),
     ...(incluirEliminados !== undefined && { include_deleted: incluirEliminados }),
   };
 }

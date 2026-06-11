@@ -27,7 +27,7 @@ const FORMA_PAGO_LABEL: Record<string, string> = {
   TRANSFERENCIA: "Transferencia",
 };
 
-const LIMITE = 10;
+const LIMITE = 6;
 
 /** El backend devuelve datetimes sin 'Z'. Los forzamos a UTC para que
  *  toLocaleString los convierta correctamente a la hora local del browser. */
@@ -43,13 +43,17 @@ export default function MisPedidosPage() {
     queryFn: () => getMisPedidos(offset, LIMITE),
   });
 
-  const pedidos = data?.data ?? [];
+  // Ordenamos por fecha de creación descendente (más recientes primero),
+  // igual que el backend, para que el orden sea consistente.
+  const pedidos = [...(data?.data ?? [])].sort(
+    (a, b) => parseUtc(b.creadoEn).getTime() - parseUtc(a.creadoEn).getTime()
+  );
   const total   = data?.total ?? 0;
   const totalPaginas = Math.ceil(total / LIMITE);
   const paginaActual = Math.floor(offset / LIMITE) + 1;
 
   return (
-    <div className="max-w-4xl mx-auto p-4 md:p-6">
+    <div className="w-full p-4 md:p-6">
       <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-6">
         Mis Pedidos
       </h1>
@@ -75,7 +79,7 @@ export default function MisPedidosPage() {
       )}
 
       {pedidos.length > 0 && (
-        <div className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {pedidos.map((pedido: PedidoPublic) => (
             <div
               key={pedido.id}

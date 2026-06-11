@@ -35,7 +35,7 @@ ESTADOS_SEED = [
 
 # formas de pago disponibles
 FORMAS_PAGO_SEED = [
-    FormaPago(codigo="MERCADOPAGO",   descripcion="Checkout API — card payment SDK", habilitado=True),
+    FormaPago(codigo="MERCADOPAGO",   descripcion="Mercado Pago",                    habilitado=True),
     FormaPago(codigo="EFECTIVO",      descripcion="Retiro en local",                 habilitado=True),
     FormaPago(codigo="TRANSFERENCIA", descripcion="Transferencia bancaria",          habilitado=True),
 ]

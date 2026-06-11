@@ -5,6 +5,7 @@ import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import CatalogoPage from "./pages/CatalogoPage";
 import CheckoutPage from "./pages/CheckoutPage";
+import ProximamentePage from "./pages/ProximamentePage";
 import PedidoConfirmadoPage from "./pages/PedidoConfirmadoPage";
 import MisPedidosPage from "./pages/MisPedidosPage";
 import PagoSuccessPage from "./pages/PagoSuccessPage";
@@ -15,6 +16,8 @@ import InsumosAdminPage from "./pages/InsumosAdminPage";
 import CategoriasAdminPage from "./pages/CategoriasAdminPage";
 import AdminConfigPage from "./pages/AdminConfigPage";
 import PanelPedidosPage from "./pages/PanelPedidosPage";
+import DashboardAdminPage from "./pages/DashboardAdminPage";
+import UsuariosAdminPage from "./pages/UsuariosAdminPage";
 import PrivateRoute from "./routes/PrivateRoute";
 import Layout from "./components/Layout";
 
@@ -36,6 +39,14 @@ export default function App() {
           element={
             <PrivateRoute roles={["CLIENT"]}>
               <CheckoutPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/proximamente"
+          element={
+            <PrivateRoute roles={["CLIENT"]}>
+              <ProximamentePage />
             </PrivateRoute>
           }
         />
@@ -78,6 +89,26 @@ export default function App() {
           element={
             <PrivateRoute roles={["CLIENT"]}>
               <PagoPendingPage />
+            </PrivateRoute>
+          }
+        />
+
+        {/* Dashboard de administrador: solo ADMIN */}
+        <Route
+          path="/admin/dashboard"
+          element={
+            <PrivateRoute roles={["ADMIN"]}>
+              <DashboardAdminPage />
+            </PrivateRoute>
+          }
+        />
+
+        {/* Gestión de usuarios: solo ADMIN */}
+        <Route
+          path="/admin/usuarios"
+          element={
+            <PrivateRoute roles={["ADMIN"]}>
+              <UsuariosAdminPage />
             </PrivateRoute>
           }
         />

@@ -6,7 +6,8 @@ from sqlmodel import Session
 from app.core.database import get_session
 from app.core.deps import get_current_active_user, require_role
 from app.modules.usuarios.models import (
-    UsuarioCreate, UsuarioPublic, LoginRequest, LoginResponse,
+    UsuarioCreate, AdminUsuarioCreate, AdminUsuarioUpdate, UsuarioPublic,
+    LoginRequest, LoginResponse,
     RefreshRequest, RefreshResponse, LogoutRequest,
     RolPublic, AsignarRolRequest,
 )
@@ -95,12 +96,33 @@ def quitar_rol(
     return svc.quitar_rol(usuario_id, rol_codigo)
 
 
+@router.post("/admin/usuarios", response_model=UsuarioPublic, status_code=status.HTTP_201_CREATED)
+def admin_create_user(
+    data: AdminUsuarioCreate,
+    admin: Annotated[UsuarioPublic, Depends(require_role(["ADMIN"]))],
+    svc: Annotated[UsuarioService, Depends(get_service)],
+):
+    """Crea un usuario con email/contraseña y le asigna roles. Solo ADMIN."""
+    return svc.admin_create(data, creado_por_id=admin.id)
+
+
 @router.get("/admin/usuarios", response_model=list[UsuarioPublic])
 def list_users(
     _admin: Annotated[UsuarioPublic, Depends(require_role(["ADMIN"]))],
     svc: Annotated[UsuarioService, Depends(get_service)],
 ):
     return svc.list_all()
+
+
+@router.patch("/admin/usuarios/{user_id}", response_model=UsuarioPublic)
+def admin_update_user(
+    user_id: int,
+    data: AdminUsuarioUpdate,
+    _admin: Annotated[UsuarioPublic, Depends(require_role(["ADMIN"]))],
+    svc: Annotated[UsuarioService, Depends(get_service)],
+):
+    """Actualiza los datos y/o roles de un usuario. Solo ADMIN."""
+    return svc.admin_update(user_id, data)
 
 
 @router.post("/admin/usuarios/{user_id}/desactivar", response_model=UsuarioPublic)

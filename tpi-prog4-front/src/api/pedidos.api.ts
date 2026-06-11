@@ -7,6 +7,7 @@ import type {
   ItemPedidoRequest,
   ConfirmarCompraRequest,
   AvanzarEstadoRequest,
+  DashboardResumen,
 } from "../types/pedidos";
 
 // ====== Catálogos ======
@@ -96,6 +97,15 @@ export async function avanzarEstadoPedido(
   return data;
 }
 
+export async function revertirEstadoPedido(
+  pedidoId: number
+): Promise<PedidoConDetalle> {
+  const { data } = await apiClient.post<PedidoConDetalle>(
+    `/pedidos/${pedidoId}/revertir`
+  );
+  return data;
+}
+
 // ====== Admin (solo ADMIN/PEDIDOS) ======
 
 export async function getTodosPedidos(
@@ -106,5 +116,10 @@ export async function getTodosPedidos(
   const { data } = await apiClient.get<PedidoList>("/pedidos/admin/todos", {
     params: { offset, limit, ...(estado ? { estado } : {}) },
   });
+  return data;
+}
+
+export async function getDashboardAdmin(): Promise<DashboardResumen> {
+  const { data } = await apiClient.get<DashboardResumen>("/pedidos/admin/dashboard");
   return data;
 }

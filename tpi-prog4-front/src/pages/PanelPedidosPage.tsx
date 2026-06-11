@@ -1,6 +1,7 @@
 import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getTodosPedidos, avanzarEstadoPedido, getPedidoById } from "../api/pedidos.api";
+import { getTodosPedidos, avanzarEstadoPedido, revertirEstadoPedido, getPedidoById } from "../api/pedidos.api";
 import type { PedidoPublic, PedidoConDetalle, EstadoPedidoCodigo } from "../types/pedidos";
 
 // ── Constantes de UI ──────────────────────────────────────────────────────────
@@ -40,6 +41,15 @@ const NEXT_BTN_LABEL: Record<string, string> = {
   confirmado:     "Iniciar preparación",
   en_preparacion: "Despachar",
   en_camino:      "Marcar entregado",
+};
+
+/** Descripción de qué pasa con el pedido al entrar a cada estado */
+const ESTADO_DESC: Record<string, string> = {
+  confirmado:     "El pedido fue confirmado y queda listo para entrar en cocina.",
+  en_preparacion: "El pedido entró en cocina: el equipo está preparándolo.",
+  en_camino:      "El pedido salió del local y está en camino hacia el cliente.",
+  entregado:      "El pedido fue entregado al cliente. Queda finalizado.",
+  cancelado:      "El pedido fue cancelado y no se continuará procesando. Se devolvió al inventario el stock de productos e ingredientes reservado.",
 };
 
 /** Estados desde los que se puede cancelar */
@@ -300,7 +310,9 @@ function DetalleModal({
 
 // ── Panel principal ───────────────────────────────────────────────────────────
 
-type CancelarModal = { pedidoId: number; motivo: string };
+type CancelarModal = { pedidoId: number; motivo: string; estadoDesde: string };
+type ExitoModal    = { pedidoId: number; estadoAnterior: string; estadoNuevo: string };
+type RevertModal   = { pedidoId: number; estadoVuelto: string };
 
 export default function PanelPedidosPage() {
   const qc = useQueryClient();
@@ -310,6 +322,8 @@ export default function PanelPedidosPage() {
   const [cancelar, setCancelar]   = useState<CancelarModal | null>(null);
   const [detalleId, setDetalleId] = useState<number | null>(null);
   const [errMsg, setErrMsg]       = useState<string | null>(null);
+  const [exito, setExito]         = useState<ExitoModal | null>(null);
+  const [revert, setRevert]       = useState<RevertModal | null>(null);
 
   // ── Query lista ──
   const { data, isLoading, isError } = useQuery({
@@ -323,30 +337,49 @@ export default function PanelPedidosPage() {
   const paginaActual = Math.floor(offset / LIMITE) + 1;
 
   // ── Mutations ──
-  const invalidar = () => qc.invalidateQueries({ queryKey: ["panel-pedidos"] });
+  const invalidar = () => {
+    qc.invalidateQueries({ queryKey: ["panel-pedidos"] });
+    // cancelar/des-cancelar ajusta el stock → refrescar catálogo e insumos
+    qc.invalidateQueries({ queryKey: ["productos"] });
+    qc.invalidateQueries({ queryKey: ["ingredientes"] });
+  };
 
   const avanzarMut = useMutation({
-    mutationFn: ({ id, estado }: { id: number; estado: EstadoPedidoCodigo }) =>
+    mutationFn: ({ id, estado }: { id: number; estado: EstadoPedidoCodigo; estadoDesde: string }) =>
       avanzarEstadoPedido(id, { estadoHacia: estado }),
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       invalidar();
       // refrescar el detalle si estaba abierto
       if (detalleId) qc.invalidateQueries({ queryKey: ["pedido-detalle", detalleId] });
+      setExito({ pedidoId: vars.id, estadoAnterior: vars.estadoDesde, estadoNuevo: vars.estado });
     },
     onError: (e: { detail?: string }) =>
       setErrMsg(e?.detail ?? "Error al cambiar el estado"),
   });
 
   const cancelarMut = useMutation({
-    mutationFn: ({ id, motivo }: { id: number; motivo: string }) =>
+    mutationFn: ({ id, motivo }: { id: number; motivo: string; estadoDesde: string }) =>
       avanzarEstadoPedido(id, { estadoHacia: "cancelado", motivo }),
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       invalidar();
       if (detalleId) qc.invalidateQueries({ queryKey: ["pedido-detalle", detalleId] });
       setCancelar(null);
+      setExito({ pedidoId: vars.id, estadoAnterior: vars.estadoDesde, estadoNuevo: "cancelado" });
     },
     onError: (e: { detail?: string }) =>
       setErrMsg(e?.detail ?? "Error al cancelar el pedido"),
+  });
+
+  const revertirMut = useMutation({
+    mutationFn: (id: number) => revertirEstadoPedido(id),
+    onSuccess: (data) => {
+      invalidar();
+      if (detalleId) qc.invalidateQueries({ queryKey: ["pedido-detalle", detalleId] });
+      setExito(null);
+      setRevert({ pedidoId: data.id, estadoVuelto: data.estadoCodigo });
+    },
+    onError: (e: { detail?: string }) =>
+      setErrMsg(e?.detail ?? "Error al deshacer el cambio de estado"),
   });
 
   // ── Handlers ──
@@ -360,7 +393,7 @@ export default function PanelPedidosPage() {
     const sig = NEXT_ESTADO[pedido.estadoCodigo];
     if (!sig) return;
     setErrMsg(null);
-    avanzarMut.mutate({ id: pedido.id, estado: sig });
+    avanzarMut.mutate({ id: pedido.id, estado: sig, estadoDesde: pedido.estadoCodigo });
   };
 
   const handleCancelarConfirm = () => {
@@ -370,7 +403,11 @@ export default function PanelPedidosPage() {
       return;
     }
     setErrMsg(null);
-    cancelarMut.mutate({ id: cancelar.pedidoId, motivo: cancelar.motivo.trim() });
+    cancelarMut.mutate({
+      id: cancelar.pedidoId,
+      motivo: cancelar.motivo.trim(),
+      estadoDesde: cancelar.estadoDesde,
+    });
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -421,7 +458,8 @@ export default function PanelPedidosPage() {
 
       {/* Lista */}
       {pedidos.length > 0 && (
-        <div className="space-y-4">
+        <div>
+          <AnimatePresence initial={false}>
           {pedidos.map((pedido: PedidoPublic) => {
             const sigEstado    = NEXT_ESTADO[pedido.estadoCodigo];
             const puedeAvanzar = !!sigEstado;
@@ -429,10 +467,15 @@ export default function PanelPedidosPage() {
             const avanMutando  = avanzarMut.isPending && avanzarMut.variables?.id === pedido.id;
 
             return (
-              <div
+              <motion.div
                 key={pedido.id}
-                className="bg-white dark:bg-[#1c1c1e] rounded-xl shadow-sm border border-gray-100 dark:border-[#3a3a3c] p-5"
+                initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+                animate={{ opacity: 1, height: "auto", marginBottom: 16 }}
+                exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+                transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
+                style={{ overflow: "hidden" }}
               >
+                <div className="bg-white dark:bg-[#1c1c1e] rounded-xl shadow-sm border border-gray-100 dark:border-[#3a3a3c] p-5">
                 {/* Cabecera */}
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                   <div>
@@ -443,9 +486,18 @@ export default function PanelPedidosPage() {
                       {fmt(pedido.creadoEn)}
                     </p>
                   </div>
-                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${ESTADO_COLOR[pedido.estadoCodigo] ?? "bg-gray-100 text-gray-700"}`}>
-                    {ESTADO_LABEL[pedido.estadoCodigo] ?? pedido.estadoCodigo}
-                  </span>
+                  <AnimatePresence mode="wait" initial={false}>
+                    <motion.span
+                      key={pedido.estadoCodigo}
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.8 }}
+                      transition={{ duration: 0.25, ease: "easeOut" }}
+                      className={`px-3 py-1 rounded-full text-xs font-semibold ${ESTADO_COLOR[pedido.estadoCodigo] ?? "bg-gray-100 text-gray-700"}`}
+                    >
+                      {ESTADO_LABEL[pedido.estadoCodigo] ?? pedido.estadoCodigo}
+                    </motion.span>
+                  </AnimatePresence>
                 </div>
 
                 {/* Info resumida */}
@@ -485,7 +537,7 @@ export default function PanelPedidosPage() {
                     {/* Cancelar */}
                     {puedeCancelar && (
                       <button
-                        onClick={() => { setErrMsg(null); setCancelar({ pedidoId: pedido.id, motivo: "" }); }}
+                        onClick={() => { setErrMsg(null); setCancelar({ pedidoId: pedido.id, motivo: "", estadoDesde: pedido.estadoCodigo }); }}
                         disabled={avanMutando}
                         className="px-3 py-1.5 rounded-lg border border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 text-sm font-medium hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40 transition-colors"
                       >
@@ -505,9 +557,11 @@ export default function PanelPedidosPage() {
                     )}
                   </div>
                 </div>
-              </div>
+                </div>
+              </motion.div>
             );
           })}
+          </AnimatePresence>
         </div>
       )}
 
@@ -583,6 +637,127 @@ export default function PanelPedidosPage() {
           </div>
         </div>
       )}
+
+      {/* Modales de éxito / deshacer con transición animada */}
+      <AnimatePresence mode="wait">
+      {exito && (
+        <motion.div
+          key="exito"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={(e) => { if (e.target === e.currentTarget && !revertirMut.isPending) setExito(null); }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          <motion.div
+            className="bg-white dark:bg-[#1c1c1e] rounded-2xl shadow-xl w-full max-w-md mx-4 p-6"
+            initial={{ opacity: 0, scale: 0.92, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.92, y: 12 }}
+            transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+          >
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-10 h-10 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0">
+                <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                Pedido #{exito.pedidoId} actualizado
+              </h2>
+            </div>
+
+            {/* Transición de estados */}
+            <div className="flex items-center justify-center gap-3 mb-4">
+              <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${ESTADO_COLOR[exito.estadoAnterior] ?? "bg-gray-100 text-gray-700"}`}>
+                {ESTADO_LABEL[exito.estadoAnterior] ?? exito.estadoAnterior}
+              </span>
+              <svg className="w-5 h-5 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+              </svg>
+              <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${ESTADO_COLOR[exito.estadoNuevo] ?? "bg-gray-100 text-gray-700"}`}>
+                {ESTADO_LABEL[exito.estadoNuevo] ?? exito.estadoNuevo}
+              </span>
+            </div>
+
+            <p className="text-sm text-gray-600 dark:text-gray-400 text-center mb-6">
+              {ESTADO_DESC[exito.estadoNuevo] ?? "El estado del pedido fue actualizado."}
+            </p>
+
+            <div className="flex gap-3 justify-between">
+              <button
+                onClick={() => revertirMut.mutate(exito.pedidoId)}
+                disabled={revertirMut.isPending}
+                className="px-4 py-2 rounded-lg border border-gray-300 dark:border-[#3a3a3c] text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#2c2c2e] disabled:opacity-40 transition-colors"
+              >
+                {revertirMut.isPending ? "Deshaciendo…" : "Deshacer"}
+              </button>
+              <button
+                onClick={() => setExito(null)}
+                disabled={revertirMut.isPending}
+                className="px-5 py-2 rounded-lg bg-[#007aff] dark:bg-[#0a84ff] text-white text-sm font-medium hover:opacity-90 disabled:opacity-40 transition-opacity"
+              >
+                Cerrar
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+
+      {/* Modal descriptivo tras deshacer */}
+      {revert && (
+        <motion.div
+          key="revert"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={(e) => { if (e.target === e.currentTarget) setRevert(null); }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          <motion.div
+            className="bg-white dark:bg-[#1c1c1e] rounded-2xl shadow-xl w-full max-w-md mx-4 p-6"
+            initial={{ opacity: 0, scale: 0.92, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.92, y: 12 }}
+            transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
+                <svg className="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v6h6M3 13a9 9 0 1 0 3-7.7L3 8" />
+                </svg>
+              </div>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                Cambio deshecho
+              </h2>
+            </div>
+
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+              El pedido{" "}
+              <span className="font-semibold text-gray-900 dark:text-white">#{revert.pedidoId}</span>{" "}
+              volvió al estado{" "}
+              <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${ESTADO_COLOR[revert.estadoVuelto] ?? "bg-gray-100 text-gray-700"}`}>
+                {ESTADO_LABEL[revert.estadoVuelto] ?? revert.estadoVuelto}
+              </span>.
+            </p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+              {ESTADO_DESC[revert.estadoVuelto] ?? "El pedido fue restaurado a su estado anterior."}
+            </p>
+
+            <div className="flex justify-end">
+              <button
+                onClick={() => setRevert(null)}
+                className="px-5 py-2 rounded-lg bg-[#007aff] dark:bg-[#0a84ff] text-white text-sm font-medium hover:opacity-90 transition-opacity"
+              >
+                Cerrar
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+      </AnimatePresence>
     </div>
   );
 }

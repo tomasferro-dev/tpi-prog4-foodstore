@@ -40,6 +40,30 @@ export interface RegisterRequest {
   celular?: string;
 }
 
+export interface RolPublic {
+  codigo: RolNombre;
+  nombre: string;
+  descripcion?: string | null;
+}
+
+export interface AdminUsuarioCreateRequest {
+  nombre: string;
+  apellido?: string;
+  email: string;
+  celular?: string;
+  password: string;
+  roles: RolNombre[];
+}
+
+export interface AdminUsuarioUpdateRequest {
+  nombre?: string;
+  apellido?: string;
+  email?: string;
+  celular?: string;
+  password?: string;
+  roles?: RolNombre[];
+}
+
 export interface JwtPayload {
   sub: number;
   email: string;
@@ -176,6 +200,7 @@ export interface FiltrosProductos {
   precioMin?: number;
   precioMax?: number;
   disponible?: boolean;
+  sinAlergenos?: boolean;
   incluirEliminados?: boolean;
   skip?: number;
   limit?: number;

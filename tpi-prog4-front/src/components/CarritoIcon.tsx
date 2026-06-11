@@ -12,7 +12,7 @@ export default function CarritoIcon() {
     <>
       <button
         onClick={() => setIsOpen(true)}
-        className="relative p-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#2c2c2e] transition-colors"
+        className="relative p-2 rounded-xl border border-[#007aff]/40 bg-[#007aff]/10 text-[#007aff] dark:text-[#0a84ff] hover:bg-[#007aff]/20 transition-colors"
         title="Carrito"
       >
         <svg

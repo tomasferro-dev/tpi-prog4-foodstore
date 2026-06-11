@@ -114,6 +114,23 @@ export interface AvanzarEstadoRequest {
   motivo?: string | null;
 }
 
+// ====== Dashboard admin ======
+
+export interface DashboardPedidoItem {
+  id: number;
+  usuarioId: number;
+  estadoCodigo: EstadoPedidoCodigo;
+  formaPagoCodigo: FormaPagoCodigo;
+  total: number;
+  creadoEn: string;
+}
+
+export interface DashboardResumen {
+  totalPedidos: number;
+  ingresosTotal: number;
+  pedidos: DashboardPedidoItem[];
+}
+
 // ====== Pago ======
 
 export interface Pago {

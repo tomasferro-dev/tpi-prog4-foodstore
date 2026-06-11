@@ -215,6 +215,7 @@ const CONFIG_DEFAULT: ConfigPrecio = {
     alquiler: 200_000,
     otros: 30_000,
   },
+  costoEnvio: 50,
 };
 
 // =====================================================================

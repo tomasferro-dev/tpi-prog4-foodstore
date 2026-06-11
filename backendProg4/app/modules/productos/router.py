@@ -30,13 +30,14 @@ def list_productos(
     precio_min: Annotated[Optional[float], Query(ge=0)] = None,
     precio_max: Annotated[Optional[float], Query(ge=0)] = None,
     disponible: Annotated[Optional[bool], Query()] = None,
+    sin_alergenos: Annotated[Optional[bool], Query()] = None,
     svc: ProductoService = Depends(get_service),
 ):
     return svc.get_all(
         offset=offset, limit=limit,
         busqueda=busqueda, categoria_id=categoria_id,
         precio_min=precio_min, precio_max=precio_max,
-        disponible=disponible,
+        disponible=disponible, sin_alergenos=sin_alergenos,
     )
 
 
@@ -59,6 +60,7 @@ def list_productos_admin(
     precio_min: Annotated[Optional[float], Query(ge=0)] = None,
     precio_max: Annotated[Optional[float], Query(ge=0)] = None,
     disponible: Annotated[Optional[bool], Query()] = None,
+    sin_alergenos: Annotated[Optional[bool], Query()] = None,
     include_deleted: Annotated[bool, Query()] = False,
     svc: ProductoService = Depends(get_service),
     _user: UsuarioPublic = Depends(require_role(["ADMIN", "STOCK"])),
@@ -67,7 +69,8 @@ def list_productos_admin(
         offset=offset, limit=limit,
         busqueda=busqueda, categoria_id=categoria_id,
         precio_min=precio_min, precio_max=precio_max,
-        disponible=disponible, include_deleted=include_deleted,
+        disponible=disponible, sin_alergenos=sin_alergenos,
+        include_deleted=include_deleted,
     )
 
 

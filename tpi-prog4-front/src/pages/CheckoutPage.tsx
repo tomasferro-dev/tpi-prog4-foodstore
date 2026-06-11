@@ -2,21 +2,21 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCartStore } from "../stores/cartStore";
 
-import {
-  confirmarCompra,
-  getCarritoActual,
-  getFormasPago,
-} from "../api/pedidos.api";
+import { getCarritoActual, getFormasPago } from "../api/pedidos.api";
 import { crearPreferencia } from "../api/pagos.api";
-import type { FormaPago, ConfirmarCompraRequest } from "../types/pedidos";
+import type { FormaPago } from "../types/pedidos";
+
+// Nombre a mostrar por código. La forma de la API de pagos se rotula "Mercado Pago".
+const FORMA_PAGO_DISPLAY: Record<string, string> = {
+  MERCADOPAGO: "Mercado Pago",
+};
 
 export default function CheckoutPage() {
   const navigate = useNavigate();
 
   // Estado local
   const [formasPago, setFormasPago] = useState<FormaPago[]>([]);
-  const [selectedFormaPago, setSelectedFormaPago] = useState<string>("EFECTIVO");
-  const [notas, setNotas] = useState("");
+  const [selectedFormaPago, setSelectedFormaPago] = useState<string>("MERCADOPAGO");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,7 +35,11 @@ export default function CheckoutPage() {
   const subtotal = useCartStore((s) => s.subtotal);
   const costoEnvio = useCartStore((s) => s.costoEnvio);
   const total = useCartStore((s) => s.total);
-  const clearCart = useCartStore((s) => s.clearCart);
+
+  const nombreForma = (codigo: string) =>
+    FORMA_PAGO_DISPLAY[codigo] ??
+    formasPago.find((f) => f.codigo === codigo)?.descripcion ??
+    codigo;
 
   // Cargar catálogos
   useEffect(() => {
@@ -62,6 +66,13 @@ export default function CheckoutPage() {
   }, [cartHydrated, items.length, navigate]);
 
   const handleConfirmarCompra = async () => {
+    // Solo Mercado Pago está operativo. Las demás formas (transferencia,
+    // retiro en local) todavía no están disponibles → página "Próximamente".
+    if (selectedFormaPago !== "MERCADOPAGO") {
+      navigate("/proximamente", { state: { metodo: nombreForma(selectedFormaPago) } });
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
@@ -75,34 +86,13 @@ export default function CheckoutPage() {
       }
 
       // ── Flujo Mercado Pago ──────────────────────────────────────────────
-      // Si la forma de pago es MERCADOPAGO, creamos la preferencia y
-      // redirigimos al usuario a la plataforma de pago de MP.
+      // Creamos la preferencia y redirigimos a la plataforma de pago de MP.
       // Al volver, MP nos manda a /pago/success (o /failure o /pending).
-      if (selectedFormaPago === "MERCADOPAGO") {
-        const initPoint = await crearPreferencia();
-        // Redirigimos a la URL de MP (sale de nuestra SPA)
-        window.location.href = initPoint;
-        return;
-      }
-
-      // ── Flujo normal (Efectivo / Transferencia) ─────────────────────────
-      const request: ConfirmarCompraRequest = {
-        formaPagoCodigo: selectedFormaPago as any,
-        direccionId: null,
-        notas: notas || undefined,
-      };
-
-      const pedido = await confirmarCompra(request);
-      clearCart();
-
-      navigate("/pedido-confirmado", {
-        state: { pedidoId: pedido.id },
-        replace: true,
-      });
+      const initPoint = await crearPreferencia();
+      window.location.href = initPoint; // sale de nuestra SPA
     } catch (err: any) {
       setError(err?.detail || "Error al confirmar compra");
       console.error(err);
-    } finally {
       setIsLoading(false);
     }
   };
@@ -161,7 +151,7 @@ export default function CheckoutPage() {
               >
                 {formasPago.map((forma) => (
                   <option key={forma.codigo} value={forma.codigo}>
-                    {forma.descripcion}
+                    {nombreForma(forma.codigo)}
                   </option>
                 ))}
               </select>
@@ -177,24 +167,19 @@ export default function CheckoutPage() {
                   </p>
                 </div>
               )}
+
+              {/* Aviso cuando la forma elegida aún no está disponible */}
+              {!isMercadoPago && (
+                <div className="mt-3 flex items-center gap-2 p-3 bg-[#ff9500]/10 border border-[#ff9500]/30 rounded-lg">
+                  <svg className="w-5 h-5 text-[#ff9500] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 8v4l2.5 2.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />
+                  </svg>
+                  <p className="text-sm text-[#b26a00] dark:text-[#ff9500]">
+                    Esta forma de pago estará disponible próximamente. Por ahora podés pagar con Mercado Pago.
+                  </p>
+                </div>
+              )}
             </div>
-
-            {/* Notas — solo para pagos sin MP */}
-            {!isMercadoPago && (
-              <div className="bg-white dark:bg-[#1c1c1e] rounded-lg shadow p-6">
-                <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
-                  Notas Adicionales
-                </h2>
-
-                <textarea
-                  value={notas}
-                  onChange={(e) => setNotas(e.target.value)}
-                  placeholder="Agregar notas sobre tu pedido (opcional)..."
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-[#3a3a3c] rounded-lg bg-white dark:bg-[#2c2c2e] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-[#007aff] resize-none"
-                  rows={4}
-                />
-              </div>
-            )}
 
             {/* Error */}
             {error && (
@@ -245,7 +230,7 @@ export default function CheckoutPage() {
                     Pagar con Mercado Pago
                   </>
                 ) : (
-                  "Confirmar Compra"
+                  "Continuar"
                 )}
               </button>
 

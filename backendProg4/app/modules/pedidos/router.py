@@ -8,7 +8,7 @@ from app.modules.usuarios.models import UsuarioPublic
 from app.modules.pedidos.schemas import (
     PedidoCreate, PedidoPublic, PedidoConDetalle, PedidoList,
     PedidoUpdate, AvanzarEstadoRequest, EstadoPedidoPublic, FormaPagoPublic,
-    ItemPedidoRequest, ConfirmarCompraRequest,
+    ItemPedidoRequest, ConfirmarCompraRequest, DashboardResumen,
 )
 from app.modules.pedidos.service import PedidoService
 
@@ -148,6 +148,27 @@ def avanzar_estado(
     return svc.avanzar_estado(
         pedido_id, data, usuario_id=user.id, roles=user.roles
     )
+
+
+@router.post("/{pedido_id}/revertir", response_model=PedidoConDetalle)
+def revertir_estado(
+    pedido_id: int,
+    svc: PedidoService = Depends(get_service),
+    user: UsuarioPublic = Depends(require_role(["ADMIN", "PEDIDOS"])),
+):
+    """Deshace la última transición de estado, volviendo el pedido a su estado previo."""
+    return svc.revertir_estado(pedido_id, usuario_id=user.id)
+
+
+# admin - dashboard / resumen (solo ADMIN)
+
+@router.get("/admin/dashboard", response_model=DashboardResumen)
+def admin_dashboard(
+    svc: PedidoService = Depends(get_service),
+    _admin: UsuarioPublic = Depends(require_role(["ADMIN"])),
+):
+    """Resumen de pedidos generados e ingresos para el panel de administrador."""
+    return svc.dashboard_resumen()
 
 
 # admin - ve todos los pedidos

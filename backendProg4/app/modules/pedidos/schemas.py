@@ -99,3 +99,20 @@ class ConfirmarCompraRequest(SQLModel):
     forma_pago_codigo: str
     direccion_id: Optional[int] = None
     notas: Optional[str] = None
+
+
+# ── Dashboard de administrador ────────────────────────────────────────────────
+
+class DashboardPedidoItem(SQLModel):
+    id: int
+    usuario_id: int
+    estado_codigo: str
+    forma_pago_codigo: str
+    total: Decimal
+    created_at: datetime
+
+
+class DashboardResumen(SQLModel):
+    total_pedidos: int
+    ingresos_total: Decimal
+    pedidos: List[DashboardPedidoItem]

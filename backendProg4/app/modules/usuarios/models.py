@@ -69,6 +69,29 @@ class UsuarioCreate(SQLModel):
     password: str = Field(min_length=8)
 
 
+class AdminUsuarioCreate(SQLModel):
+    """Alta de usuario hecha por un admin: crea el usuario y le asigna roles,
+    sin generar sesión para el nuevo usuario."""
+    nombre: str
+    apellido: Optional[str] = None
+    email: EmailStr
+    celular: Optional[str] = None
+    password: str = Field(min_length=8)
+    roles: list[str] = []
+
+
+class AdminUsuarioUpdate(SQLModel):
+    """Edición de un usuario hecha por un admin. Todos los campos son
+    opcionales: solo se actualiza lo que venga presente. Si `roles` viene
+    presente, reemplaza el set completo de roles del usuario."""
+    nombre: Optional[str] = None
+    apellido: Optional[str] = None
+    email: Optional[EmailStr] = None
+    celular: Optional[str] = None
+    password: Optional[str] = Field(default=None, min_length=8)
+    roles: Optional[list[str]] = None
+
+
 class LoginRequest(SQLModel):
     email: EmailStr
     password: str
