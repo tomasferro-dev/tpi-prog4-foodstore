@@ -2,9 +2,9 @@
 
 Monorepo con dos proyectos:
 
-- **`backendProg4/`** — API REST en FastAPI + SQLModel + PostgreSQL (capas
+- **`backend/`** — API REST en FastAPI + SQLModel + PostgreSQL (capas
   router / service / Unit of Work / repository / model).
-- **`tpi-prog4-front/`** — SPA en React + TypeScript + Vite + Zustand +
+- **`frontend/`** — SPA en React + TypeScript + Vite + Zustand +
   TanStack Query + Tailwind.
 
 Todos los endpoints de negocio cuelgan del prefijo **`/api/v1`**.
@@ -22,7 +22,7 @@ Todos los endpoints de negocio cuelgan del prefijo **`/api/v1`**.
 ## 1. Backend
 
 ```bash
-cd backendProg4
+cd backend
 
 # entorno virtual
 python -m venv .venv
@@ -37,7 +37,7 @@ pip install -r requirements.txt
 
 ### Variables de entorno
 
-Creá un archivo **`backendProg4/.env`** (copialo de `backendProg4/.env.example`)
+Creá un archivo **`backend/.env`** (copialo de `backend/.env.example`)
 con este contenido:
 
 ```env
@@ -103,7 +103,7 @@ uvicorn main:app --reload
 ## 2. Frontend
 
 ```bash
-cd tpi-prog4-front
+cd frontend
 npm install
 npm run dev
 ```
@@ -113,7 +113,7 @@ npm run dev
 En desarrollo no hace falta configurar `.env`: el cliente usa rutas relativas a
 `/api/v1` y el **proxy de Vite** (`vite.config.ts`) las redirige al backend en
 `http://localhost:8000`. Para builds contra un backend remoto, copiá
-`tpi-prog4-front/.env.example` a `.env` y completá `VITE_API_URL`.
+`frontend/.env.example` a `.env` y completá `VITE_API_URL`.
 
 ---
 
