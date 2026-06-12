@@ -5,16 +5,17 @@
  *   ?collection_id=...&collection_status=approved&payment_id=...
  *   &status=approved&external_reference=<pedido_id>&...
  *
- * Aquí confirmamos el carrito activo con forma de pago MERCADOPAGO
- * y mostramos el resultado al usuario.
+ * Acá NO confirmamos a ciegas: enviamos el payment_id al backend, que lo verifica
+ * contra la API de Mercado Pago y, solo si está aprobado, confirma el pedido.
  */
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { confirmarCompra } from "../api/pedidos.api";
+import { confirmarPago } from "../api/pagos.api";
+import { getPedidoById } from "../api/pedidos.api";
 import { useCartStore } from "../stores/cartStore";
 import type { PedidoConDetalle } from "../types/pedidos";
 
-type PageState = "loading" | "success" | "error";
+type PageState = "loading" | "success" | "pending" | "error";
 
 export default function PagoSuccessPage() {
   const navigate = useNavigate();
@@ -25,44 +26,44 @@ export default function PagoSuccessPage() {
   const [pedido, setPedido] = useState<PedidoConDetalle | null>(null);
   const [errorMsg, setErrorMsg] = useState<string>("");
 
-  /**
-   * Guardia contra la doble ejecución de useEffect en React 18 Strict Mode
-   * (development). El ref persiste entre el desmontaje/remontaje simulado,
-   * así la segunda invocación sale antes de llamar a la API.
-   */
+  // Guardia contra la doble ejecución de useEffect en React 18 Strict Mode (dev).
   const yaEjecutado = useRef(false);
 
   useEffect(() => {
     if (yaEjecutado.current) return;
     yaEjecutado.current = true;
 
-    const confirmar = async () => {
-      try {
-        // MP envía el status aprobado — confirmamos el carrito en nuestro sistema
-        const pedidoConfirmado = await confirmarCompra({
-          formaPagoCodigo: "MERCADOPAGO",
-          direccionId: null,
-          notas: `Pago MP aprobado. Payment ID: ${searchParams.get("payment_id") ?? ""}`,
-        });
+    const verificar = async () => {
+      const paymentId = searchParams.get("payment_id") ?? searchParams.get("collection_id");
 
-        clearCart();
-        setPedido(pedidoConfirmado);
-        setPageState("success");
-      } catch (err: any) {
-        // Si el pedido ya fue confirmado (carrito vacío), igual mostramos éxito genérico
-        const msg: string = err?.detail ?? err?.message ?? "Error al confirmar el pedido";
-        if (msg.toLowerCase().includes("carrito")) {
-          // El carrito ya no existe → ya fue procesado antes
+      if (!paymentId) {
+        setErrorMsg("No recibimos el identificador de pago de Mercado Pago.");
+        setPageState("error");
+        return;
+      }
+
+      try {
+        // El backend verifica el pago contra MP y confirma el pedido si está aprobado
+        const resultado = await confirmarPago(paymentId);
+
+        if (resultado.confirmado) {
+          // Traemos el detalle del pedido confirmado para mostrarlo
+          const detalle = await getPedidoById(resultado.pedidoId);
           clearCart();
+          setPedido(detalle);
           setPageState("success");
         } else {
-          setErrorMsg(msg);
-          setPageState("error");
+          // Pago no aprobado (pending / in_process / rejected): el pedido sigue pendiente
+          setPageState("pending");
         }
+      } catch (err: any) {
+        const msg: string = err?.detail ?? err?.message ?? "No pudimos confirmar el pago";
+        setErrorMsg(msg);
+        setPageState("error");
       }
     };
 
-    confirmar();
+    verificar();
   }, []);
 
   // ── Loading ──────────────────────────────────────────────────────────────────
@@ -70,7 +71,32 @@ export default function PagoSuccessPage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-[#000000] gap-4">
         <div className="w-12 h-12 border-4 border-[#009ee3] border-t-transparent rounded-full animate-spin" />
-        <p className="text-gray-600 dark:text-gray-400">Confirmando tu pago...</p>
+        <p className="text-gray-600 dark:text-gray-400">Verificando tu pago...</p>
+      </div>
+    );
+  }
+
+  // ── Pago no aprobado todavía ───────────────────────────────────────────────────
+  if (pageState === "pending") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-[#000000] px-4">
+        <div className="max-w-md w-full text-center">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-[#ff9500]/15 rounded-full mb-4">
+            <svg className="w-8 h-8 text-[#ff9500]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l2.5 2.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />
+            </svg>
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Pago en proceso</h1>
+          <p className="text-gray-600 dark:text-gray-400 mb-6">
+            Tu pago todavía no fue acreditado. Cuando Mercado Pago lo apruebe, tu pedido se confirmará automáticamente.
+          </p>
+          <button
+            onClick={() => navigate("/mis-pedidos")}
+            className="w-full bg-[#007aff] dark:bg-[#0a84ff] text-white font-semibold py-3 rounded-lg hover:opacity-90"
+          >
+            Ver mis pedidos
+          </button>
+        </div>
       </div>
     );
   }
@@ -163,8 +189,14 @@ export default function PagoSuccessPage() {
         {/* Acciones */}
         <div className="space-y-3">
           <button
-            onClick={() => navigate("/")}
+            onClick={() => navigate("/mis-pedidos")}
             className="w-full bg-[#007aff] dark:bg-[#0a84ff] text-white font-semibold py-3 rounded-lg hover:opacity-90 transition-opacity"
+          >
+            Ver mis pedidos
+          </button>
+          <button
+            onClick={() => navigate("/")}
+            className="w-full bg-gray-100 dark:bg-[#2c2c2e] text-gray-900 dark:text-white font-semibold py-3 rounded-lg hover:bg-gray-200 dark:hover:bg-[#3a3a3c]"
           >
             Volver al Catálogo
           </button>

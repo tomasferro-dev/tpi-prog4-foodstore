@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional, List
 from sqlmodel import SQLModel, Field, Column
-from sqlalchemy import ARRAY, Integer
+from sqlalchemy import ARRAY, BigInteger, Integer
 
 
 class EstadoPedido(SQLModel, table=True):
@@ -78,7 +78,11 @@ class Pago(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     pedido_id: int = Field(foreign_key="pedidos.id", nullable=False)
 
-    mp_payment_id: Optional[int] = Field(default=None, unique=True)
+    # BIGINT: los payment IDs de Mercado Pago superan el rango de INTEGER (2^31)
+    mp_payment_id: Optional[int] = Field(
+        default=None,
+        sa_column=Column(BigInteger, unique=True, nullable=True),
+    )
     mp_status: str = Field(max_length=30, nullable=False)
     mp_status_detail: Optional[str] = Field(default=None, max_length=100)
     external_reference: str = Field(max_length=100, unique=True, nullable=False)

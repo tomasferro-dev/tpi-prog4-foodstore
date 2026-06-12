@@ -15,6 +15,9 @@ env/
 # Environment variables
 .env
 .env.*
+# ...pero los .env.example SÍ se versionan (plantillas sin secretos)
+!.env.example
+!**/.env.example
 
 # Node
 node_modules/

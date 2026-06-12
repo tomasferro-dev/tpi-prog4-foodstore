@@ -9,7 +9,7 @@ from app.core.database import get_session
 from app.modules.usuarios.models import Usuario, UsuarioPublic, UsuarioRol
 
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token")
 
 
 async def get_current_user(

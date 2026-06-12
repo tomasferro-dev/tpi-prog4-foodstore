@@ -1,9 +1,11 @@
 // Toggle estilo iOS — verde cuando esta activo, gris cuando no.
 
-import { useThemeStore } from "../stores/themeStore";
+import { useUiStore } from "../stores/uiStore";
 
 export default function DarkModeToggle() {
-  const { dark, toggle } = useThemeStore();
+  // suscripción por slice (evita re-renders innecesarios)
+  const dark = useUiStore((s) => s.dark);
+  const toggle = useUiStore((s) => s.toggleDark);
 
   return (
     <button

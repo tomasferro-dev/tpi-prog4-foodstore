@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "./index.css";
 import App from "./App.tsx";
 import { seedSiHaceFalta } from "./api/mockServer";
-import { initTheme } from "./stores/themeStore";
+import { initTheme } from "./stores/uiStore";
 
 // Aplicar tema guardado ANTES del primer render (evita flash)
 initTheme();

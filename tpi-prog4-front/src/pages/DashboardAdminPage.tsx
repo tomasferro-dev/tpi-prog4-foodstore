@@ -1,4 +1,8 @@
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell,
+} from "recharts";
 import { getDashboardAdmin } from "../api/pedidos.api";
 import type { DashboardResumen } from "../types/pedidos";
 
@@ -27,6 +31,16 @@ const FORMA_PAGO_LABEL: Record<string, string> = {
   TRANSFERENCIA: "Transferencia",
 };
 
+// Colores de las barras por estado (gráfico)
+const ESTADO_HEX: Record<string, string> = {
+  pendiente:      "#8e8e93",
+  confirmado:     "#007aff",
+  en_preparacion: "#af52de",
+  en_camino:      "#ff9500",
+  entregado:      "#34c759",
+  cancelado:      "#ff3b30",
+};
+
 function parseUtc(iso: string): Date {
   return new Date(/Z|[+-]\d{2}:\d{2}$/.test(iso) ? iso : iso + "Z");
 }
@@ -49,6 +63,34 @@ export default function DashboardAdminPage() {
     queryKey: ["admin-dashboard"],
     queryFn: getDashboardAdmin,
   });
+
+  // Pedidos agrupados por estado (para el gráfico de barras)
+  const pedidosPorEstado = useMemo(() => {
+    const counts: Record<string, number> = {};
+    (data?.pedidos ?? []).forEach((p) => {
+      counts[p.estadoCodigo] = (counts[p.estadoCodigo] ?? 0) + 1;
+    });
+    return Object.entries(counts).map(([estadoCodigo, cantidad]) => ({
+      estadoCodigo,
+      estado: ESTADO_LABEL[estadoCodigo] ?? estadoCodigo,
+      cantidad,
+    }));
+  }, [data]);
+
+  // Ingresos sumados por día (orden cronológico)
+  const ingresosPorDia = useMemo(() => {
+    const acc: Record<string, { label: string; ingresos: number }> = {};
+    (data?.pedidos ?? []).forEach((p) => {
+      const d = parseUtc(p.creadoEn);
+      const key = d.toISOString().slice(0, 10);
+      const label = d.toLocaleDateString("es-AR", { day: "2-digit", month: "short" });
+      if (!acc[key]) acc[key] = { label, ingresos: 0 };
+      acc[key].ingresos += Number(p.total);
+    });
+    return Object.keys(acc)
+      .sort()
+      .map((k) => ({ dia: acc[k].label, ingresos: acc[k].ingresos }));
+  }, [data]);
 
   return (
     <div className="max-w-5xl mx-auto p-4 md:p-6">
@@ -85,6 +127,52 @@ export default function DashboardAdminPage() {
               </p>
             </div>
           </div>
+
+          {/* Gráficos (recharts) */}
+          {data.pedidos.length > 0 && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
+              <div className="bg-white dark:bg-[#1c1c1e] border border-gray-200 dark:border-[#3a3a3c] rounded-2xl p-5 shadow-sm">
+                <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-4">
+                  Pedidos por estado
+                </h2>
+                <ResponsiveContainer width="100%" height={240}>
+                  <BarChart data={pedidosPorEstado}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#8e8e9333" />
+                    <XAxis dataKey="estado" tick={{ fill: "#9ca3af", fontSize: 11 }} interval={0} angle={-15} textAnchor="end" height={50} />
+                    <YAxis allowDecimals={false} tick={{ fill: "#9ca3af", fontSize: 12 }} />
+                    <Tooltip
+                      cursor={{ fill: "#8e8e9322" }}
+                      contentStyle={{ background: "#1c1c1e", border: "1px solid #3a3a3c", borderRadius: 8, color: "#fff" }}
+                    />
+                    <Bar dataKey="cantidad" radius={[6, 6, 0, 0]}>
+                      {pedidosPorEstado.map((d) => (
+                        <Cell key={d.estadoCodigo} fill={ESTADO_HEX[d.estadoCodigo] ?? "#007aff"} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="bg-white dark:bg-[#1c1c1e] border border-gray-200 dark:border-[#3a3a3c] rounded-2xl p-5 shadow-sm">
+                <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-4">
+                  Ingresos por día
+                </h2>
+                <ResponsiveContainer width="100%" height={240}>
+                  <BarChart data={ingresosPorDia}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#8e8e9333" />
+                    <XAxis dataKey="dia" tick={{ fill: "#9ca3af", fontSize: 11 }} />
+                    <YAxis tick={{ fill: "#9ca3af", fontSize: 12 }} width={70} tickFormatter={(v) => `$${Number(v).toLocaleString("es-AR")}`} />
+                    <Tooltip
+                      cursor={{ fill: "#8e8e9322" }}
+                      formatter={(v) => money(Number(v))}
+                      contentStyle={{ background: "#1c1c1e", border: "1px solid #3a3a3c", borderRadius: 8, color: "#fff" }}
+                    />
+                    <Bar dataKey="ingresos" fill="#34c759" radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
 
           {/* Tabla de pedidos */}
           <div className="bg-white dark:bg-[#1c1c1e] border border-gray-200 dark:border-[#3a3a3c] rounded-2xl shadow-sm overflow-hidden">

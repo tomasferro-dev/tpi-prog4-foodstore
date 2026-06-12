@@ -5,7 +5,6 @@ import type {
   EstadoPedido,
   FormaPago,
   ItemPedidoRequest,
-  ConfirmarCompraRequest,
   AvanzarEstadoRequest,
   DashboardResumen,
 } from "../types/pedidos";
@@ -55,16 +54,6 @@ export async function eliminarDelCarrito(
 ): Promise<PedidoConDetalle | null> {
   const { data } = await apiClient.delete<PedidoConDetalle | null>(
     `/pedidos/items/${productoId}`
-  );
-  return data;
-}
-
-export async function confirmarCompra(
-  request: ConfirmarCompraRequest
-): Promise<PedidoConDetalle> {
-  const { data } = await apiClient.post<PedidoConDetalle>(
-    "/pedidos/confirmar",
-    request
   );
   return data;
 }

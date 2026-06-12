@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, timedelta, timezone
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -39,9 +40,11 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
 def create_refresh_token(data: dict) -> str:
     # igual que el access token pero con más tiempo de vida
     # lo diferenciamos con type=refresh para que no se pueda usar como access
+    # jti = nonce único: garantiza que dos refresh tokens nunca sean idénticos
+    # (aunque se emitan en el mismo segundo), evitando colisiones de token_hash
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
-    to_encode.update({"type": "refresh", "exp": expire})
+    to_encode.update({"type": "refresh", "exp": expire, "jti": str(uuid.uuid4())})
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 

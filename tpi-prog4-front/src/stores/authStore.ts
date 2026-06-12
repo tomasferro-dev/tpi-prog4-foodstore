@@ -22,6 +22,7 @@ interface AuthState {
   refreshToken: string | null;
   user: Usuario | null;
   login: (data: LoginResponse) => void;
+  updateTokens: (tokens: { accessToken: string; refreshToken: string }) => void;
   logout: () => void;
   isAuthenticated: () => boolean;
   hasRole: (rol: RolNombre) => boolean;
@@ -37,6 +38,10 @@ export const useAuthStore = create<AuthState>()(
 
       login: (data) =>
         set({ accessToken: data.accessToken, refreshToken: data.refreshToken, user: data.user }),
+
+      // Actualiza solo los tokens (lo usa el interceptor tras refrescar la sesión)
+      updateTokens: ({ accessToken, refreshToken }) =>
+        set({ accessToken, refreshToken }),
 
       logout: () => set({ accessToken: null, refreshToken: null, user: null }),
 

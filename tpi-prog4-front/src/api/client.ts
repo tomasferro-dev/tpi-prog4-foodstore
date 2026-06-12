@@ -39,10 +39,11 @@ const RESPONSE_RENAMES: Record<string, string> = {
   deletedAt: "eliminadoEn",
 };
 
-// baseURL vacío → URLs relativas → el proxy de Vite las redirige al backend.
+// baseURL "/api/v1" → axios concatena el prefijo a cada path ("/auth/login" →
+// "/api/v1/auth/login"). El proxy de Vite redirige "/api/v1" al backend.
 // Funciona igual en localhost y vía ngrok sin cambiar nada.
 export const apiClient = axios.create({
-  baseURL: "",
+  baseURL: "/api/v1",
   headers: { "Content-Type": "application/json" },
 });
 
@@ -54,16 +55,61 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
+// ── Refresh de sesión transparente ──────────────────────────────────────────
+// Ante un 401, intentamos renovar el access token con el refresh token y
+// reintentamos la request original. Usamos un único refresh "en vuelo"
+// (single-flight): si llegan varios 401 concurrentes, todos esperan el mismo
+// refresh y se reintentan después.
+let refreshPromise: Promise<string | null> | null = null;
+
+async function refreshAccessToken(): Promise<string | null> {
+  const refreshToken = useAuthStore.getState().refreshToken;
+  if (!refreshToken) return null;
+  try {
+    // axios "crudo" (sin interceptores) para no recursar ni transformar keys.
+    const { data } = await axios.post("/api/v1/auth/refresh", { refresh_token: refreshToken });
+    const accessToken: string = data.access_token;
+    const nuevoRefresh: string = data.refresh_token ?? refreshToken;
+    useAuthStore.getState().updateTokens({ accessToken, refreshToken: nuevoRefresh });
+    return accessToken;
+  } catch {
+    return null;
+  }
+}
+
+function getRefreshEnVuelo(): Promise<string | null> {
+  if (!refreshPromise) {
+    refreshPromise = refreshAccessToken().finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
+}
+
 apiClient.interceptors.response.use(
   (res) => {
     const camel = transformKeys(res.data, snakeToCamel);
     res.data = renameKeys(camel, RESPONSE_RENAMES);
     return res;
   },
-  (error) => {
-    if (error.response?.status === 401) {
+  async (error) => {
+    const original = error.config;
+    const status = error.response?.status;
+    const url: string = original?.url ?? "";
+    const esAuthEndpoint = url.includes("/auth/refresh") || url.includes("/auth/login");
+
+    if (status === 401 && original && !original._retry && !esAuthEndpoint) {
+      original._retry = true;
+      const nuevoToken = await getRefreshEnVuelo();
+      if (nuevoToken) {
+        // El request interceptor adjunta el nuevo token desde el authStore
+        return apiClient(original);
+      }
+      useAuthStore.getState().logout();
+    } else if (status === 401 && !esAuthEndpoint) {
       useAuthStore.getState().logout();
     }
+
     return Promise.reject(error.response?.data ?? error);
   }
 );

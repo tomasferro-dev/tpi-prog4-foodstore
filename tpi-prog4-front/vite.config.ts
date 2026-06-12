@@ -14,14 +14,8 @@ export default defineConfig({
     port: 5173,
     allowedHosts: true,
     proxy: {
-      '/auth':            p,
-      '/productos':       p,
-      '/categorias':      p,
-      '/pedidos':         p,
-      '/pagos':           p,
-      '/direcciones':     p,
-      '/unidades-medida': p,
-      '/admin':           p,
+      // Todo el backend cuelga de /api/v1 (integrador.md §5)
+      '/api/v1': p,
     },
   },
 })

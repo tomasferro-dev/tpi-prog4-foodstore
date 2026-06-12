@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCartStore } from "../stores/cartStore";
+import { usePaymentStore } from "../stores/paymentStore";
 
 import { getCarritoActual, getFormasPago } from "../api/pedidos.api";
 import { crearPreferencia } from "../api/pagos.api";
@@ -35,6 +36,16 @@ export default function CheckoutPage() {
   const subtotal = useCartStore((s) => s.subtotal);
   const costoEnvio = useCartStore((s) => s.costoEnvio);
   const total = useCartStore((s) => s.total);
+
+  // Proceso de pago (paymentStore) — suscripción por slice
+  const startCheckout = usePaymentStore((s) => s.startCheckout);
+  const setInitPoint = usePaymentStore((s) => s.setInitPoint);
+  const setPagoError = usePaymentStore((s) => s.setError);
+  const resetPayment = usePaymentStore((s) => s.reset);
+
+  useEffect(() => {
+    resetPayment();
+  }, [resetPayment]);
 
   const nombreForma = (codigo: string) =>
     FORMA_PAGO_DISPLAY[codigo] ??
@@ -75,12 +86,14 @@ export default function CheckoutPage() {
 
     setIsLoading(true);
     setError(null);
+    startCheckout();
 
     try {
       // Verificar que haya carrito activo
       const carritoActual = await getCarritoActual();
       if (!carritoActual) {
         setError("No hay carrito activo");
+        setPagoError("No hay carrito activo");
         setIsLoading(false);
         return;
       }
@@ -89,9 +102,12 @@ export default function CheckoutPage() {
       // Creamos la preferencia y redirigimos a la plataforma de pago de MP.
       // Al volver, MP nos manda a /pago/success (o /failure o /pending).
       const initPoint = await crearPreferencia();
+      setInitPoint(initPoint);
       window.location.href = initPoint; // sale de nuestra SPA
     } catch (err: any) {
-      setError(err?.detail || "Error al confirmar compra");
+      const msg = err?.detail || "Error al confirmar compra";
+      setError(msg);
+      setPagoError(msg);
       console.error(err);
       setIsLoading(false);
     }

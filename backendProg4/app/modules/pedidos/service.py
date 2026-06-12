@@ -16,8 +16,11 @@ from app.modules.pedidos.unit_of_work import PedidoUnitOfWork
 from app.modules.config.service import ConfigService
 
 # mapa de transiciones válidas de la FSM
+# OJO: pendiente→confirmado NO está acá a propósito (RN-FS02): esa transición es
+# exclusivamente automática y la dispara el pago aprobado (PagoService →
+# confirmar_pago_aprobado), nunca un usuario vía avanzar_estado.
 FSM: dict[str, list[str]] = {
-    "pendiente":      ["confirmado", "cancelado"],
+    "pendiente":      ["cancelado"],
     "confirmado":     ["en_preparacion", "cancelado"],
     "en_preparacion": ["en_camino", "cancelado"],
     "en_camino":      ["entregado"],
@@ -555,61 +558,34 @@ class PedidoService:
 
         uow.pedidos.add(pedido)
 
-    def confirmar_carrito(
-        self,
-        usuario_id: int,
-        forma_pago_codigo: str,
-        direccion_id: int | None = None,
-        notas: str | None = None,
-    ) -> PedidoConDetalle:
-        """Confirma el carrito, transicionando a estado 'confirmado'."""
+    def confirmar_pago_aprobado(self, pedido_id: int) -> None:
+        """Confirma un pedido tras un pago aprobado. Actor = SISTEMA (webhook /
+        verificación de pago), por eso usuario_id=None en el historial (RN-FS09).
+
+        Idempotente: si el pedido no existe, ya no está en 'pendiente' o está
+        vacío, no hace nada. Es la ÚNICA vía de transición pendiente→confirmado
+        (RN-FS02) y descuenta el stock atómicamente (RN-FS03)."""
         with PedidoUnitOfWork(self._session) as uow:
-            pedido = uow.pedidos.get_carrito_activo(usuario_id)
-            if not pedido:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="No hay carrito activo para confirmar"
-                )
-
+            pedido = uow.pedidos.get_by_id(pedido_id)
+            if not pedido or pedido.deleted_at is not None:
+                return
+            if pedido.estado_codigo != "pendiente":
+                return  # ya confirmado/avanzado → no repetir (idempotencia)
             if len(uow.detalles.get_by_pedido(pedido.id)) == 0:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="No puedes confirmar un carrito vacío"
-                )
+                return
 
-            # Validar forma de pago
-            forma = uow.formas_pago.get_by_codigo(forma_pago_codigo)
-            if not forma or not forma.habilitado:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Forma de pago '{forma_pago_codigo}' no disponible"
-                )
-
-            # Actualizar pedido
-            pedido.forma_pago_codigo = forma_pago_codigo
-            pedido.direccion_id = direccion_id
-            pedido.notas = notas
+            pedido.forma_pago_codigo = "MERCADOPAGO"
             pedido.estado_codigo = "confirmado"
             pedido.updated_at = datetime.now(timezone.utc)
             uow.pedidos.add(pedido)
 
-            # Registrar transición de estado
             uow.historial.add(HistorialEstadoPedido(
                 pedido_id=pedido.id,
                 estado_desde="pendiente",
                 estado_hacia="confirmado",
-                usuario_id=usuario_id,
+                usuario_id=None,  # sistema (pago aprobado)
+                motivo="Pago aprobado en Mercado Pago",
             ))
 
-            # Descontar stock de productos
-            detalles = uow.detalles.get_by_pedido(pedido.id)
-            for detalle in detalles:
-                producto = uow.productos.get_by_id(detalle.producto_id)
-                if producto:
-                    producto.stock_cantidad -= detalle.cantidad
-                    uow.productos.add(producto)
-                    # Descontar ingredientes
-                    self._descontar_stock_ingredientes(uow, detalle.producto_id, detalle.cantidad)
-
-            result = self._build_detalle(uow, pedido)
-        return result
+            # Descontar stock (producto terminado + ingredientes) de todo el pedido
+            self._descontar_stock_pedido(uow, pedido.id)

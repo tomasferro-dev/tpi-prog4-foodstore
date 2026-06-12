@@ -1,10 +1,11 @@
 from typing import Annotated
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel import Session
 
 from app.core.database import get_session
 from app.core.deps import get_current_active_user, require_role
+from app.core.ratelimit import limiter
 from app.modules.usuarios.models import (
     UsuarioCreate, AdminUsuarioCreate, AdminUsuarioUpdate, UsuarioPublic,
     LoginRequest, LoginResponse,
@@ -21,7 +22,9 @@ def get_service(session: Annotated[Session, Depends(get_session)]) -> UsuarioSer
 
 
 @router.post("/registro", response_model=LoginResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")  # DEV. Producción: "3/hour"
 def register(
+    request: Request,
     data: UsuarioCreate,
     svc: Annotated[UsuarioService, Depends(get_service)],
 ):
@@ -29,7 +32,9 @@ def register(
 
 
 @router.post("/login", response_model=LoginResponse)
+@limiter.limit("30/minute")  # DEV. Producción (RN-AU06): "5/15minutes"
 def login(
+    request: Request,
     data: LoginRequest,
     svc: Annotated[UsuarioService, Depends(get_service)],
 ):
@@ -37,7 +42,9 @@ def login(
 
 
 @router.post("/token", response_model=LoginResponse, include_in_schema=False)
+@limiter.limit("30/minute")  # DEV. Producción (RN-AU06): "5/15minutes"
 def login_oauth2_form(
+    request: Request,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     svc: Annotated[UsuarioService, Depends(get_service)],
 ):

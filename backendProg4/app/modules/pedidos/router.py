@@ -8,7 +8,7 @@ from app.modules.usuarios.models import UsuarioPublic
 from app.modules.pedidos.schemas import (
     PedidoCreate, PedidoPublic, PedidoConDetalle, PedidoList,
     PedidoUpdate, AvanzarEstadoRequest, EstadoPedidoPublic, FormaPagoPublic,
-    ItemPedidoRequest, ConfirmarCompraRequest, DashboardResumen,
+    ItemPedidoRequest, DashboardResumen,
 )
 from app.modules.pedidos.service import PedidoService
 
@@ -71,21 +71,6 @@ def eliminar_del_carrito(
 ):
     """Elimina un producto del carrito. Retorna null si no hay carrito."""
     return svc.eliminar_del_carrito(user.id, producto_id)
-
-
-@router.post("/confirmar", response_model=PedidoConDetalle)
-def confirmar_compra(
-    data: ConfirmarCompraRequest,
-    svc: Annotated[PedidoService, Depends(get_service)],
-    user: Annotated[UsuarioPublic, Depends(require_role(["CLIENT"]))],
-):
-    """Confirma el carrito, transicionando a estado 'confirmado'."""
-    return svc.confirmar_carrito(
-        usuario_id=user.id,
-        forma_pago_codigo=data.forma_pago_codigo,
-        direccion_id=data.direccion_id,
-        notas=data.notas,
-    )
 
 
 # pedidos del usuario logeado

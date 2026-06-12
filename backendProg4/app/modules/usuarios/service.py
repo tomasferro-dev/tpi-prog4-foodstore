@@ -235,6 +235,7 @@ class UsuarioService:
 
         return RefreshResponse(
             access_token=new_access,
+            refresh_token=new_raw_refresh,
             expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         )
 

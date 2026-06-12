@@ -27,6 +27,8 @@ class Settings(BaseSettings):
 
     # Mercado Pago
     MP_ACCESS_TOKEN: str = ""
+    MP_PUBLIC_KEY: str = ""
+    MP_WEBHOOK_SECRET: str = ""   # secreto para validar la firma x-signature del webhook
     FRONTEND_URL: str = "http://localhost:5173"
     BACKEND_URL: str = "http://localhost:8000"
 
