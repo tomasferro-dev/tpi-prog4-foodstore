@@ -329,6 +329,8 @@ export default function PanelPedidosPage() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["panel-pedidos", filtro, offset],
     queryFn: () => getTodosPedidos(offset, LIMITE, filtro),
+    // Auto-refresh: el staff ve pedidos nuevos y cambios de estado en vivo.
+    refetchInterval: 20000,
   });
 
   const pedidos      = data?.data ?? [];

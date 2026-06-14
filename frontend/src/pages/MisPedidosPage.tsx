@@ -41,6 +41,8 @@ export default function MisPedidosPage() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["mis-pedidos", offset],
     queryFn: () => getMisPedidos(offset, LIMITE),
+    // Auto-refresh: si el pedido se confirma por el pago, el estado se ve solo.
+    refetchInterval: 20000,
   });
 
   // Ordenamos por fecha de creación descendente (más recientes primero),

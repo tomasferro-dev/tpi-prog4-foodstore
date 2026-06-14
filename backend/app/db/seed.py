@@ -16,11 +16,14 @@ ROLES_SEED = [
     Rol(codigo="CLIENT",  nombre="Cliente",         descripcion="Opera solo sus propios datos"),
 ]
 
-# unidades de medida del catálogo inicial (simplificado: masa, volumen, unidad)
+# unidades de medida del catálogo inicial (masa, volumen, unidad)
 UNIDADES_SEED = [
-    UnidadMedida(nombre="kilogramo", simbolo="kg", tipo="masa"),
-    UnidadMedida(nombre="litro",     simbolo="L",  tipo="volumen"),
-    UnidadMedida(nombre="unidad",    simbolo="u",  tipo="unidad"),
+    UnidadMedida(nombre="gramo",     simbolo="g",   tipo="masa"),
+    UnidadMedida(nombre="kilogramo", simbolo="kg",  tipo="masa"),
+    UnidadMedida(nombre="mililitro", simbolo="mL",  tipo="volumen"),
+    UnidadMedida(nombre="litro",     simbolo="L",   tipo="volumen"),
+    UnidadMedida(nombre="unidad",    simbolo="u",   tipo="unidad"),
+    UnidadMedida(nombre="docena",    simbolo="doc", tipo="unidad"),
 ]
 
 # estados del pedido con su orden en la FSM

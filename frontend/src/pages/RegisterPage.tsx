@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useNavigate, Navigate, Link } from "react-router-dom";
 import { authApi } from "../api/auth.api";
 import { useAuthStore } from "../stores/authStore";
-import { HttpError } from "../api/mockServer";
 import DarkModeToggle from "../components/DarkModeToggle";
 
 export default function RegisterPage() {
@@ -28,8 +27,10 @@ export default function RegisterPage() {
       const res = await authApi.registro({ nombre, email, password });
       login(res);
       navigate("/", { replace: true });
-    } catch (err) {
-      setError(err instanceof HttpError ? err.detail : "Error inesperado al registrarse");
+    } catch (err: unknown) {
+      // client.ts rechaza con el body RFC 7807 del backend ({ detail, code }).
+      const detail = (err as Record<string, string>)?.detail;
+      setError(detail ?? "Error inesperado al registrarse");
     } finally {
       setCargando(false);
     }
