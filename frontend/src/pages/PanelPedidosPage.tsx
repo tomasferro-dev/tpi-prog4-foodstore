@@ -38,7 +38,7 @@ const NEXT_ESTADO: Partial<Record<string, EstadoPedidoCodigo>> = {
 };
 
 const NEXT_BTN_LABEL: Record<string, string> = {
-  confirmado:     "Iniciar preparación",
+  confirmado:     "Pasar a preparación",
   en_preparacion: "Despachar",
   en_camino:      "Marcar entregado",
 };
@@ -346,7 +346,7 @@ export default function PanelPedidosPage() {
 
   const avanzarMut = useMutation({
     mutationFn: ({ id, estado }: { id: number; estado: EstadoPedidoCodigo; estadoDesde: string }) =>
-      avanzarEstadoPedido(id, { estadoHacia: estado }),
+      avanzarEstadoPedido(id, { nuevoEstado: estado }),
     onSuccess: (_data, vars) => {
       invalidar();
       // refrescar el detalle si estaba abierto
@@ -359,7 +359,7 @@ export default function PanelPedidosPage() {
 
   const cancelarMut = useMutation({
     mutationFn: ({ id, motivo }: { id: number; motivo: string; estadoDesde: string }) =>
-      avanzarEstadoPedido(id, { estadoHacia: "cancelado", motivo }),
+      avanzarEstadoPedido(id, { nuevoEstado: "cancelado", motivo }),
     onSuccess: (_data, vars) => {
       invalidar();
       if (detalleId) qc.invalidateQueries({ queryKey: ["pedido-detalle", detalleId] });

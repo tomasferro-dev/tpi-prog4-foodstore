@@ -32,6 +32,7 @@ export default function Navbar() {
   const links: { to: string; label: string; end?: boolean }[] = [
     { to: "/", label: "Catalogo", end: true },
     ...(user?.roles.includes("CLIENT") ? [{ to: "/mis-pedidos", label: "Mis Pedidos" }] : []),
+    ...(user?.roles.includes("CLIENT") ? [{ to: "/mis-direcciones", label: "Mis Direcciones" }] : []),
     ...(esAdmin ? [{ to: "/admin/dashboard", label: "Dashboard" }] : []),
     ...(esAdmin ? [{ to: "/admin/usuarios", label: "Usuarios" }] : []),
     ...(esAdminOPedidos ? [{ to: "/admin/pedidos", label: "Pedidos" }] : []),

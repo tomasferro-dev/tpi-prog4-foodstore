@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 from decimal import Decimal
 from fastapi import HTTPException, status
@@ -6,6 +7,7 @@ from sqlmodel import Session
 from app.modules.pedidos.models import (
     Pedido, DetallePedido, HistorialEstadoPedido,
 )
+from app.modules.direcciones.models import DireccionEntrega
 from app.modules.pedidos.schemas import (
     PedidoCreate, PedidoPublic, PedidoConDetalle, PedidoList,
     DetallePedidoPublic, HistorialEstadoPublic,
@@ -79,6 +81,7 @@ class PedidoService:
             id=pedido.id,
             usuario_id=pedido.usuario_id,
             direccion_id=pedido.direccion_id,
+            direccion_snapshot=pedido.direccion_snapshot,
             estado_codigo=pedido.estado_codigo,
             forma_pago_codigo=pedido.forma_pago_codigo,
             subtotal=pedido.subtotal,
@@ -136,22 +139,40 @@ class PedidoService:
             uow.ingredientes.add(ingrediente)
 
     def _descontar_stock_pedido(self, uow, pedido_id: int) -> None:
-        """Descuenta del inventario el stock (producto + ingredientes) de todo el pedido."""
+        """Descuenta el stock de todo el pedido en un único punto (al confirmar).
+
+        - terminado: descuenta producto.stock_cantidad y valida que alcance (RN-CA05:
+          el stock nunca queda negativo).
+        - elaborado: su stock de producto es derivado de los ingredientes, así que NO
+          se toca producto.stock_cantidad; se descuenta solo el stock de ingredientes
+          (que ya valida insuficiencia internamente).
+        """
         for detalle in uow.detalles.get_by_pedido(pedido_id):
             producto = uow.productos.get_by_id(detalle.producto_id)
-            if producto:
+            if not producto:
+                continue
+            if producto.tipo_producto == "terminado":
+                if producto.stock_cantidad < detalle.cantidad:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail=f"Stock insuficiente para '{producto.nombre}'",
+                    )
                 producto.stock_cantidad -= detalle.cantidad
                 uow.productos.add(producto)
+            else:
                 self._descontar_stock_ingredientes(uow, detalle.producto_id, detalle.cantidad)
 
     def _restaurar_stock_pedido(self, uow, pedido_id: int) -> None:
-        """Devuelve al inventario el stock (producto + ingredientes) de todo el pedido."""
+        """Devuelve el stock al inventario (inverso de _descontar_stock_pedido)."""
         for detalle in uow.detalles.get_by_pedido(pedido_id):
             producto = uow.productos.get_by_id(detalle.producto_id)
-            if producto:
+            if not producto:
+                continue
+            if producto.tipo_producto == "terminado":
                 producto.stock_cantidad += detalle.cantidad
                 uow.productos.add(producto)
-            self._restaurar_stock_ingredientes(uow, detalle.producto_id, detalle.cantidad)
+            else:
+                self._restaurar_stock_ingredientes(uow, detalle.producto_id, detalle.cantidad)
 
     def _ajustar_stock_por_transicion(
         self, uow, pedido_id: int, estado_desde: str, estado_hacia: str
@@ -188,9 +209,6 @@ class PedidoService:
                 if not producto.disponible:
                     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                                         detail=f"Producto '{producto.nombre}' no está disponible")
-                if producto.stock_cantidad < item.cantidad:
-                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                                        detail=f"Stock insuficiente para '{producto.nombre}'")
 
                 precio = Decimal(str(producto.precio_base))
                 subtotal_item = precio * item.cantidad
@@ -205,20 +223,29 @@ class PedidoService:
                     subtotal_snap=subtotal_item,
                     personalizacion=item.personalizacion,
                 ))
+                # El stock NO se descuenta acá: el pedido nace en 'pendiente' y el
+                # descuento ocurre en un único punto al confirmar el pago (RN-FS03).
 
-                # descontamos el stock del producto terminado
-                producto.stock_cantidad -= item.cantidad
-                uow.productos.add(producto)
-
-                # también descontamos el stock de los ingredientes usados para fabricarlo
-                self._descontar_stock_ingredientes(uow, item.producto_id, item.cantidad)
-
-            costo_envio = Decimal("50.00") if data.direccion_id else Decimal("0.00")
+            # Dirección de entrega: validar ownership y guardar snapshot inmutable (RN-PE03)
+            direccion_snapshot = None
+            costo_envio = Decimal("0.00")
+            if data.direccion_id is not None:
+                dire = self._session.get(DireccionEntrega, data.direccion_id)
+                if not dire or dire.deleted_at is not None or dire.usuario_id != usuario_id:
+                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                        detail="Dirección no encontrada o no te pertenece")
+                direccion_snapshot = json.dumps({
+                    "alias": dire.alias, "linea1": dire.linea1, "linea2": dire.linea2,
+                    "ciudad": dire.ciudad, "provincia": dire.provincia,
+                    "codigo_postal": dire.codigo_postal,
+                }, ensure_ascii=False)
+                costo_envio = self._get_costo_envio(uow)
             total = subtotal + costo_envio
 
             pedido = Pedido(
                 usuario_id=usuario_id,
                 direccion_id=data.direccion_id,
+                direccion_snapshot=direccion_snapshot,
                 estado_codigo="pendiente",
                 forma_pago_codigo=data.forma_pago_codigo,
                 subtotal=subtotal,
@@ -256,7 +283,7 @@ class PedidoService:
         return result
 
     def update(self, pedido_id: int, data: "PedidoUpdate", usuario_id: int, roles: list[str]) -> PedidoConDetalle:
-        if data.estado_hacia:
+        if data.nuevo_estado:
             return self.avanzar_estado(pedido_id, data, usuario_id=usuario_id, roles=roles)
 
         with PedidoUnitOfWork(self._session) as uow:
@@ -300,8 +327,17 @@ class PedidoService:
     ) -> PedidoConDetalle:
         with PedidoUnitOfWork(self._session) as uow:
             pedido = self._get_or_404(uow, pedido_id)
+
+            # RN-RB05: un CLIENT solo puede operar sobre sus propios pedidos
+            es_staff = "ADMIN" in roles or "PEDIDOS" in roles
+            if not es_staff and pedido.usuario_id != usuario_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="No tenés permisos para modificar este pedido",
+                )
+
             estado_actual = pedido.estado_codigo
-            estado_hacia = data.estado_hacia
+            estado_hacia = data.nuevo_estado
 
             # validamos que la transición sea válida en la FSM
             transiciones = FSM.get(estado_actual, [])
@@ -441,122 +477,6 @@ class PedidoService:
         config_svc = ConfigService(self._session)
         config = config_svc.get()
         return Decimal(str(config.costo_envio))
-
-    def get_carrito_activo(self, usuario_id: int) -> PedidoConDetalle | None:
-        """Obtiene el carrito activo (pendiente) del usuario, o None si no existe."""
-        with PedidoUnitOfWork(self._session) as uow:
-            pedido = uow.pedidos.get_carrito_activo(usuario_id)
-            if not pedido:
-                return None
-            return self._build_detalle(uow, pedido)
-
-    def agregar_al_carrito(
-        self,
-        usuario_id: int,
-        producto_id: int,
-        cantidad: int,
-        personalizacion: list[int] | None = None,
-    ) -> PedidoConDetalle:
-        """
-        Agrega o actualiza un producto en el carrito del usuario.
-        Si no existe carrito activo, lo crea.
-        """
-        with PedidoUnitOfWork(self._session) as uow:
-            # Obtener o crear carrito
-            pedido = uow.pedidos.get_carrito_activo(usuario_id)
-
-            if not pedido:
-                # Crear nuevo carrito
-                pedido = Pedido(
-                    usuario_id=usuario_id,
-                    estado_codigo="pendiente",
-                    forma_pago_codigo="EFECTIVO",  # default
-                    subtotal=Decimal("0.00"),
-                    descuento=Decimal("0.00"),
-                    costo_envio=Decimal("0.00"),
-                    total=Decimal("0.00"),
-                )
-                uow.pedidos.add(pedido)
-                self._session.flush()
-
-                # Primer historial
-                uow.historial.add(HistorialEstadoPedido(
-                    pedido_id=pedido.id,
-                    estado_desde=None,
-                    estado_hacia="pendiente",
-                    usuario_id=usuario_id,
-                ))
-
-            # Validar producto
-            producto = uow.productos.get_by_id(producto_id)
-            if not producto or producto.deleted_at is not None:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Producto id={producto_id} no encontrado"
-                )
-            if not producto.disponible:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Producto '{producto.nombre}' no está disponible"
-                )
-
-            # Buscar si ya existe item en el carrito
-            detalle = uow.detalles.get_by_ids(pedido.id, producto_id)
-
-            if detalle:
-                # Actualizar cantidad
-                detalle.cantidad = cantidad
-            else:
-                # Crear nuevo detalle
-                detalle = DetallePedido(
-                    pedido_id=pedido.id,
-                    producto_id=producto_id,
-                    cantidad=cantidad,
-                    nombre_snapshot=producto.nombre,
-                    precio_snapshot=Decimal(str(producto.precio_base)),
-                    subtotal_snap=Decimal(str(producto.precio_base)) * cantidad,
-                    personalizacion=personalizacion,
-                )
-
-            uow.detalles.add(detalle)
-
-            # Recalcular totales del pedido
-            self._recalcular_totales(uow, pedido.id)
-
-            result = self._build_detalle(uow, pedido)
-        return result
-
-    def eliminar_del_carrito(self, usuario_id: int, producto_id: int) -> PedidoConDetalle | None:
-        """Elimina un producto del carrito del usuario."""
-        with PedidoUnitOfWork(self._session) as uow:
-            pedido = uow.pedidos.get_carrito_activo(usuario_id)
-            if not pedido:
-                return None
-
-            detalle = uow.detalles.get_by_ids(pedido.id, producto_id)
-            if detalle:
-                self._session.delete(detalle)
-
-            # Recalcular totales
-            self._recalcular_totales(uow, pedido.id)
-
-            result = self._build_detalle(uow, pedido)
-        return result
-
-    def _recalcular_totales(self, uow, pedido_id: int) -> None:
-        """Recalcula subtotal y total de un pedido basado en sus detalles."""
-        detalles = uow.detalles.get_by_pedido(pedido_id)
-        pedido = uow.pedidos.get_by_id(pedido_id)
-
-        subtotal = sum(Decimal(str(d.subtotal_snap)) for d in detalles)
-        costo_envio = self._get_costo_envio(uow)
-
-        pedido.subtotal = subtotal
-        pedido.costo_envio = costo_envio
-        pedido.total = subtotal + costo_envio
-        pedido.updated_at = datetime.now(timezone.utc)
-
-        uow.pedidos.add(pedido)
 
     def confirmar_pago_aprobado(self, pedido_id: int) -> None:
         """Confirma un pedido tras un pago aprobado. Actor = SISTEMA (webhook /

@@ -32,7 +32,10 @@ class DireccionService:
 
     def create(self, data: DireccionCreate, usuario_id: int) -> DireccionPublic:
         with DireccionUnitOfWork(self._session) as uow:
-            if data.es_principal:
+            # RN-DI01: la primera dirección del usuario se marca predeterminada
+            es_primera = uow.direcciones.count_by_usuario(usuario_id) == 0
+            es_principal = data.es_principal or es_primera
+            if es_principal:
                 self._desmarcar_principal(uow, usuario_id)
             d = DireccionEntrega(
                 usuario_id=usuario_id,
@@ -44,7 +47,7 @@ class DireccionService:
                 codigo_postal=data.codigo_postal,
                 latitud=data.latitud,
                 longitud=data.longitud,
-                es_principal=data.es_principal,
+                es_principal=es_principal,
             )
             uow.direcciones.add(d)
             result = DireccionPublic.model_validate(d)

@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useCartStore } from "../stores/cartStore";
 import { usePaymentStore } from "../stores/paymentStore";
 
-import { getCarritoActual, getFormasPago } from "../api/pedidos.api";
+import { crearPedido, getFormasPago } from "../api/pedidos.api";
 import { crearPreferencia } from "../api/pagos.api";
+import { useDireccionesQuery } from "../hooks/useDirecciones";
 import type { FormaPago } from "../types/pedidos";
 
 // Nombre a mostrar por código. La forma de la API de pagos se rotula "Mercado Pago".
@@ -46,6 +47,18 @@ export default function CheckoutPage() {
   useEffect(() => {
     resetPayment();
   }, [resetPayment]);
+
+  // Direcciones de entrega del cliente
+  const { data: direcciones = [] } = useDireccionesQuery();
+  const [selectedDireccionId, setSelectedDireccionId] = useState<number | null>(null);
+
+  // Preseleccionar la predeterminada (o la primera) cuando carguen
+  useEffect(() => {
+    if (selectedDireccionId === null && direcciones.length > 0) {
+      const principal = direcciones.find((d) => d.esPrincipal) ?? direcciones[0];
+      setSelectedDireccionId(principal.id);
+    }
+  }, [direcciones, selectedDireccionId]);
 
   const nombreForma = (codigo: string) =>
     FORMA_PAGO_DISPLAY[codigo] ??
@@ -89,19 +102,27 @@ export default function CheckoutPage() {
     startCheckout();
 
     try {
-      // Verificar que haya carrito activo
-      const carritoActual = await getCarritoActual();
-      if (!carritoActual) {
-        setError("No hay carrito activo");
-        setPagoError("No hay carrito activo");
+      if (items.length === 0) {
+        setError("El carrito está vacío");
+        setPagoError("El carrito está vacío");
         setIsLoading(false);
         return;
       }
 
       // ── Flujo Mercado Pago ──────────────────────────────────────────────
-      // Creamos la preferencia y redirigimos a la plataforma de pago de MP.
-      // Al volver, MP nos manda a /pago/success (o /failure o /pending).
-      const initPoint = await crearPreferencia();
+      // 1. Creamos el pedido (pendiente) en el backend desde el carrito local (RN-CR01).
+      const pedido = await crearPedido({
+        formaPagoCodigo: "MERCADOPAGO",
+        direccionId: selectedDireccionId,
+        items: items.map((i) => ({
+          productoId: i.producto_id,
+          cantidad: i.cantidad,
+          personalizacion: i.personalizacion,
+        })),
+      });
+      // 2. Creamos la preferencia MP para ese pedido y redirigimos a pagar.
+      //    Al volver, MP nos manda a /pago/success (o /failure o /pending).
+      const initPoint = await crearPreferencia(pedido.id);
       setInitPoint(initPoint);
       window.location.href = initPoint; // sale de nuestra SPA
     } catch (err: any) {
@@ -151,6 +172,41 @@ export default function CheckoutPage() {
                   </div>
                 ))}
               </div>
+            </div>
+
+            {/* Dirección de entrega */}
+            <div className="bg-white dark:bg-[#1c1c1e] rounded-lg shadow p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                  Dirección de Entrega
+                </h2>
+                <Link to="/mis-direcciones" className="text-sm text-[#007aff] dark:text-[#0a84ff] hover:underline">
+                  Gestionar
+                </Link>
+              </div>
+
+              {direcciones.length === 0 ? (
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  No tenés direcciones cargadas.{" "}
+                  <Link to="/mis-direcciones" className="text-[#007aff] dark:text-[#0a84ff] underline">
+                    Agregá una
+                  </Link>{" "}
+                  para indicar dónde entregar tu pedido.
+                </p>
+              ) : (
+                <select
+                  value={selectedDireccionId ?? ""}
+                  onChange={(e) => setSelectedDireccionId(e.target.value ? Number(e.target.value) : null)}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-[#3a3a3c] rounded-lg bg-white dark:bg-[#2c2c2e] text-gray-900 dark:text-white focus:outline-none focus:border-[#007aff]"
+                >
+                  {direcciones.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {(d.alias ? `${d.alias} — ` : "") + `${d.linea1}, ${d.ciudad}`}
+                      {d.esPrincipal ? " (predeterminada)" : ""}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
 
             {/* Forma de pago */}

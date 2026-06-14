@@ -21,7 +21,7 @@ def get_service(session: Annotated[Session, Depends(get_session)]) -> UsuarioSer
     return UsuarioService(session)
 
 
-@router.post("/registro", response_model=LoginResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=LoginResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit("30/minute")  # DEV. Producción: "3/hour"
 def register(
     request: Request,

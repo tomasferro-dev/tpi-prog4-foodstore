@@ -37,6 +37,11 @@ class Pedido(SQLModel, table=True):
     total: Decimal = Field(nullable=False, decimal_places=2, max_digits=10)
     notas: Optional[str] = Field(default=None)
 
+    # Snapshot inmutable de la dirección de entrega al momento de fijarla (RN-PE03).
+    # JSON serializado: si luego se edita/elimina la dirección, el pedido conserva
+    # la copia con la que se hizo el envío.
+    direccion_snapshot: Optional[str] = Field(default=None)
+
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     deleted_at: Optional[datetime] = Field(default=None)

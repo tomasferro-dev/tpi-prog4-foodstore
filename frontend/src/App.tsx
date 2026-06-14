@@ -8,6 +8,7 @@ import CheckoutPage from "./pages/CheckoutPage";
 import ProximamentePage from "./pages/ProximamentePage";
 import PedidoConfirmadoPage from "./pages/PedidoConfirmadoPage";
 import MisPedidosPage from "./pages/MisPedidosPage";
+import MisDireccionesPage from "./pages/MisDireccionesPage";
 import PagoSuccessPage from "./pages/PagoSuccessPage";
 import PagoFailurePage from "./pages/PagoFailurePage";
 import PagoPendingPage from "./pages/PagoPendingPage";
@@ -63,6 +64,14 @@ export default function App() {
           element={
             <PrivateRoute roles={["CLIENT"]}>
               <MisPedidosPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/mis-direcciones"
+          element={
+            <PrivateRoute roles={["CLIENT"]}>
+              <MisDireccionesPage />
             </PrivateRoute>
           }
         />

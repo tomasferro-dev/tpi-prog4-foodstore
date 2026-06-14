@@ -1,8 +1,11 @@
+// cartStore (Zustand) — carrito 100% client-side (RN-CR01).
+// No existe carrito en el backend: el pedido se crea recién en el checkout.
+// Persiste items + costoEnvio en localStorage; sobrevive refresh/cierre/logout.
+
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { PedidoConDetalle } from "../types/pedidos";
 
-interface CartItem {
+export interface CartItem {
   producto_id: number;
   nombre: string;
   cantidad: number;
@@ -12,160 +15,90 @@ interface CartItem {
 }
 
 interface CartStore {
-  // Estado
-  carrito: PedidoConDetalle | null;
   items: CartItem[];
   subtotal: number;
   costoEnvio: number;
   total: number;
-  isLoading: boolean;
 
-  // Acciones
-  setCarrito: (carrito: PedidoConDetalle | null) => void;
   addItem: (item: CartItem) => void;
   updateItem: (productoId: number, cantidad: number) => void;
   removeItem: (productoId: number) => void;
   clearCart: () => void;
   setCostoEnvio: (costo: number) => void;
-  setIsLoading: (loading: boolean) => void;
   recalcular: () => void;
 }
 
 export const useCartStore = create<CartStore>()(
   persist(
     (set, get) => ({
-      carrito: null,
       items: [],
       subtotal: 0,
       costoEnvio: 50,
       total: 0,
-      isLoading: false,
-
-      setCarrito: (carrito) => {
-        if (carrito) {
-          const items: CartItem[] = carrito.items.map((item) => {
-            const precio = Number(item.precioSnapshot) || 0;
-            const cantidad = Number(item.cantidad) || 0;
-            const subtotal = precio * cantidad;
-            return {
-              producto_id: item.productoId,
-              nombre: item.nombreSnapshot,
-              cantidad,
-              precio_unitario: precio,
-              subtotal,
-              personalizacion: item.personalizacion ?? undefined,
-            };
-          });
-
-          const subtotal = items.reduce((sum, item) => sum + item.subtotal, 0);
-          const costoEnvio = Number(carrito.costoEnvio) || 0;
-          const total = subtotal + costoEnvio;
-
-          set({
-            carrito,
-            items,
-            subtotal,
-            costoEnvio,
-            total,
-          });
-        } else {
-          set({
-            carrito: null,
-            items: [],
-            subtotal: 0,
-            costoEnvio: 50,
-            total: 0,
-          });
-        }
-      },
 
       addItem: (newItem) => {
         const { items } = get();
-        const existingIndex = items.findIndex(
-          (item) => item.producto_id === newItem.producto_id
-        );
+        const idx = items.findIndex((i) => i.producto_id === newItem.producto_id);
 
-        let updatedItems: CartItem[];
-        if (existingIndex > -1) {
-          // Actualizar cantidad
-          updatedItems = [...items];
-          updatedItems[existingIndex].cantidad += newItem.cantidad;
-          updatedItems[existingIndex].subtotal =
-            updatedItems[existingIndex].precio_unitario *
-            updatedItems[existingIndex].cantidad;
+        let updated: CartItem[];
+        if (idx > -1) {
+          updated = [...items];
+          updated[idx].cantidad += newItem.cantidad;
+          updated[idx].subtotal = updated[idx].precio_unitario * updated[idx].cantidad;
+          if (newItem.personalizacion) updated[idx].personalizacion = newItem.personalizacion;
         } else {
-          // Agregar nuevo con valores numéricos garantizados
-          const item = {
-            ...newItem,
-            precio_unitario: Number(newItem.precio_unitario) || 0,
-            cantidad: Number(newItem.cantidad) || 1,
-            subtotal: Number(newItem.subtotal) || 0,
-          };
-          updatedItems = [...items, item];
+          updated = [
+            ...items,
+            {
+              ...newItem,
+              precio_unitario: Number(newItem.precio_unitario) || 0,
+              cantidad: Number(newItem.cantidad) || 1,
+              subtotal: Number(newItem.subtotal) || 0,
+            },
+          ];
         }
-
-        set({ items: updatedItems });
+        set({ items: updated });
         get().recalcular();
       },
 
       updateItem: (productoId, cantidad) => {
         const { items } = get();
-        const updatedItems = items.map((item) => {
-          if (item.producto_id === productoId) {
-            return {
-              ...item,
-              cantidad: Math.max(1, cantidad),
-              subtotal: item.precio_unitario * Math.max(1, cantidad),
-            };
-          }
-          return item;
-        });
-        set({ items: updatedItems });
+        const updated = items.map((item) =>
+          item.producto_id === productoId
+            ? {
+                ...item,
+                cantidad: Math.max(1, cantidad),
+                subtotal: item.precio_unitario * Math.max(1, cantidad),
+              }
+            : item
+        );
+        set({ items: updated });
         get().recalcular();
       },
 
       removeItem: (productoId) => {
-        const { items } = get();
-        const updatedItems = items.filter((item) => item.producto_id !== productoId);
-        set({ items: updatedItems });
+        set({ items: get().items.filter((i) => i.producto_id !== productoId) });
         get().recalcular();
       },
 
-      clearCart: () => {
-        set({
-          carrito: null,
-          items: [],
-          subtotal: 0,
-          costoEnvio: 50,
-          total: 0,
-        });
-      },
+      clearCart: () => set({ items: [], subtotal: 0, costoEnvio: 50, total: 0 }),
 
       setCostoEnvio: (costo) => {
         set({ costoEnvio: costo });
         get().recalcular();
       },
 
-      setIsLoading: (loading) => {
-        set({ isLoading: loading });
-      },
-
       recalcular: () => {
         const { items, costoEnvio } = get();
-        const subtotal = items.reduce((sum, item) => sum + item.subtotal, 0);
-        const total = subtotal + costoEnvio;
-        set({ subtotal, total });
+        const subtotal = items.reduce((sum, i) => sum + i.subtotal, 0);
+        set({ subtotal, total: subtotal + costoEnvio });
       },
     }),
     {
       name: "cart-store",
-      partialize: (state) => ({
-        items: state.items,
-        costoEnvio: state.costoEnvio,
-      }),
+      partialize: (state) => ({ items: state.items, costoEnvio: state.costoEnvio }),
       onRehydrateStorage: () => () => {
-        // Después de restaurar items desde localStorage, recalcular
-        // subtotal y total (que no se persisten).
+        // Recalcular subtotal/total (no se persisten) tras restaurar items
         useCartStore.getState().recalcular();
       },
     }

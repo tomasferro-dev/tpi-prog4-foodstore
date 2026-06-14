@@ -36,32 +36,41 @@ class PagoService:
         return mercadopago.SDK(settings.MP_ACCESS_TOKEN)
 
     # ── Crear preferencia + registrar Pago ──────────────────────────────────
-    def crear_preferencia(self, usuario_id: int) -> str:
-        ped_svc = PedidoService(self._session)
-        carrito = ped_svc.get_carrito_activo(usuario_id)
-        if not carrito:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                                detail="No tenés un carrito activo. Agregá productos primero.")
-        if not carrito.items:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                                detail="El carrito está vacío.")
-
+    def crear_preferencia(self, usuario_id: int, pedido_id: int) -> str:
+        """Crea la preferencia MP para un pedido pendiente ya existente (el
+        checkout primero crea el pedido con POST /pedidos y luego pide su
+        preferencia). El carrito vive solo en el cliente (RN-CR01)."""
         sdk = self._sdk()
 
-        items_mp = [
-            {
-                "id": str(item.producto_id),
-                "title": item.nombre_snapshot,
-                "quantity": item.cantidad,
-                "unit_price": float(item.precio_snapshot),
-                "currency_id": "ARS",
-            }
-            for item in carrito.items
-        ]
-        if carrito.costo_envio and float(carrito.costo_envio) > 0:
+        with PedidoUnitOfWork(self._session) as uow:
+            pedido = uow.pedidos.get_by_id(pedido_id)
+            if not pedido or pedido.deleted_at is not None or pedido.usuario_id != usuario_id:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                    detail="Pedido no encontrado")
+            if pedido.estado_codigo != "pendiente":
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                    detail="El pedido ya no está pendiente de pago")
+            detalles = uow.detalles.get_by_pedido(pedido.id)
+            if not detalles:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                    detail="El pedido no tiene items")
+            items_mp = [
+                {
+                    "id": str(d.producto_id),
+                    "title": d.nombre_snapshot,
+                    "quantity": d.cantidad,
+                    "unit_price": float(d.precio_snapshot),
+                    "currency_id": "ARS",
+                }
+                for d in detalles
+            ]
+            costo_envio = pedido.costo_envio
+            total = pedido.total
+
+        if costo_envio and float(costo_envio) > 0:
             items_mp.append({
                 "id": "envio", "title": "Costo de envío", "quantity": 1,
-                "unit_price": float(carrito.costo_envio), "currency_id": "ARS",
+                "unit_price": float(costo_envio), "currency_id": "ARS",
             })
 
         is_localhost = "localhost" in settings.FRONTEND_URL or "127.0.0.1" in settings.FRONTEND_URL
@@ -73,7 +82,7 @@ class PagoService:
                 "pending": f"{settings.FRONTEND_URL}/pago/pending",
             },
             **({"auto_return": "approved"} if not is_localhost else {}),
-            "external_reference": str(carrito.id),
+            "external_reference": str(pedido_id),
             **({"notification_url": f"{settings.BACKEND_URL}/api/v1/pagos/webhook"} if not is_localhost else {}),
         }
 
@@ -84,17 +93,16 @@ class PagoService:
 
         init_point = result["response"]["init_point"]
 
-        # Aseguramos un registro Pago (pending) para el pedido — reutilizamos el
-        # existente si el cliente reintenta el checkout (external_reference único).
+        # Registro Pago (pending) — reutilizamos el existente si reintenta el checkout
         with PedidoUnitOfWork(self._session) as uow:
-            existentes = uow.pagos.get_by_pedido(carrito.id)
+            existentes = uow.pagos.get_by_pedido(pedido_id)
             if not existentes:
                 uow.pagos.add(Pago(
-                    pedido_id=carrito.id,
+                    pedido_id=pedido_id,
                     mp_status="pending",
-                    external_reference=str(carrito.id),
+                    external_reference=str(pedido_id),
                     idempotency_key=str(uuid.uuid4()),
-                    transaction_amount=Decimal(str(carrito.total)),
+                    transaction_amount=Decimal(str(total)),
                 ))
 
         return init_point

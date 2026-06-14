@@ -31,7 +31,7 @@ from app.core.deps import get_current_active_user, require_role
 from app.modules.usuarios.models import UsuarioPublic
 from app.modules.pagos.service import PagoService
 from app.modules.pagos.schemas import (
-    PreferenciaResponse, ConfirmarPagoRequest, ConfirmarPagoResponse, PagoPublic,
+    PreferenciaRequest, PreferenciaResponse, ConfirmarPagoRequest, ConfirmarPagoResponse, PagoPublic,
 )
 
 router = APIRouter()
@@ -44,11 +44,12 @@ def get_service(session: Annotated[Session, Depends(get_session)]) -> PagoServic
 # ── POST /pagos/preferencia ──────────────────────────────────────────────────
 @router.post("/preferencia", response_model=PreferenciaResponse)
 def crear_preferencia(
+    data: PreferenciaRequest,
     svc: Annotated[PagoService, Depends(get_service)],
     user: Annotated[UsuarioPublic, Depends(require_role(["CLIENT"]))],
 ):
-    """Crea la preferencia de pago del carrito activo y registra el Pago (pending)."""
-    init_point = svc.crear_preferencia(user.id)
+    """Crea la preferencia MP para un pedido pendiente del cliente y registra el Pago (pending)."""
+    init_point = svc.crear_preferencia(user.id, pedido_id=data.pedido_id)
     return PreferenciaResponse(init_point=init_point)
 
 

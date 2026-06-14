@@ -1,6 +1,7 @@
 from sqlmodel import Session, select
 from app.core.repository import BaseRepository
 from app.modules.categorias.models import Categoria
+from app.modules.productos.models import Producto, ProductoCategoria
 
 
 class CategoriaRepository(BaseRepository[Categoria]):
@@ -25,6 +26,15 @@ class CategoriaRepository(BaseRepository[Categoria]):
         if not include_deleted:
             stmt = stmt.where(Categoria.deleted_at == None)
         return list(self.session.exec(stmt.offset(offset).limit(limit)).all())
+
+    def count_productos_activos(self, categoria_id: int) -> int:
+        """Cuántos productos NO eliminados están asociados a la categoría (RN-CA03)."""
+        return len(self.session.exec(
+            select(ProductoCategoria.producto_id)
+            .join(Producto, Producto.id == ProductoCategoria.producto_id)
+            .where(ProductoCategoria.categoria_id == categoria_id)
+            .where(Producto.deleted_at == None)
+        ).all())
 
     def get_hijos_activos(self, parent_id: int) -> list[Categoria]:
         return list(self.session.exec(

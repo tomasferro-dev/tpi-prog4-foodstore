@@ -7,8 +7,8 @@ from app.core.deps import get_current_active_user, require_role
 from app.modules.usuarios.models import UsuarioPublic
 from app.modules.pedidos.schemas import (
     PedidoCreate, PedidoPublic, PedidoConDetalle, PedidoList,
-    PedidoUpdate, AvanzarEstadoRequest, EstadoPedidoPublic, FormaPagoPublic,
-    ItemPedidoRequest, DashboardResumen,
+    PedidoUpdate, AvanzarEstadoRequest, CancelarPedidoRequest,
+    EstadoPedidoPublic, FormaPagoPublic, HistorialEstadoPublic, DashboardResumen,
 )
 from app.modules.pedidos.service import PedidoService
 
@@ -37,50 +37,16 @@ def list_formas_pago(
     return svc.list_formas_pago()
 
 
-# carrito del usuario logueado (solo CLIENT)
-
-@router.get("/actual", response_model=PedidoConDetalle | None)
-def get_carrito_activo(
-    svc: Annotated[PedidoService, Depends(get_service)],
-    user: Annotated[UsuarioPublic, Depends(require_role(["CLIENT"]))],
-):
-    """Obtiene el carrito activo del usuario. Retorna null si no existe."""
-    return svc.get_carrito_activo(user.id)
-
-
-@router.post("/items", response_model=PedidoConDetalle)
-def agregar_al_carrito(
-    item: ItemPedidoRequest,
-    svc: Annotated[PedidoService, Depends(get_service)],
-    user: Annotated[UsuarioPublic, Depends(require_role(["CLIENT"]))],
-):
-    """Agrega o actualiza un producto en el carrito del usuario."""
-    return svc.agregar_al_carrito(
-        usuario_id=user.id,
-        producto_id=item.producto_id,
-        cantidad=item.cantidad,
-        personalizacion=item.personalizacion,
-    )
-
-
-@router.delete("/items/{producto_id}", response_model=PedidoConDetalle | None)
-def eliminar_del_carrito(
-    producto_id: int,
-    svc: Annotated[PedidoService, Depends(get_service)],
-    user: Annotated[UsuarioPublic, Depends(require_role(["CLIENT"]))],
-):
-    """Elimina un producto del carrito. Retorna null si no hay carrito."""
-    return svc.eliminar_del_carrito(user.id, producto_id)
-
-
 # pedidos del usuario logeado
+# El carrito vive solo en el cliente (RN-CR01): el pedido se crea acá, en el checkout.
 
 @router.post("/", response_model=PedidoConDetalle, status_code=status.HTTP_201_CREATED)
 def create_pedido(
     data: PedidoCreate,
     svc: Annotated[PedidoService, Depends(get_service)],
-    user: Annotated[UsuarioPublic, Depends(get_current_active_user)],
+    user: Annotated[UsuarioPublic, Depends(require_role(["CLIENT"]))],
 ):
+    """Crea un pedido pendiente a partir de los items del carrito del cliente."""
     return svc.create(data, usuario_id=user.id)
 
 
@@ -123,15 +89,40 @@ def get_pedido(
     return svc.get_by_id(pedido_id, usuario_id=user.id, roles=user.roles)
 
 
-@router.post("/{pedido_id}/estado", response_model=PedidoConDetalle)
+@router.get("/{pedido_id}/historial", response_model=list[HistorialEstadoPublic])
+def get_historial(
+    pedido_id: int,
+    svc: PedidoService = Depends(get_service),
+    user: UsuarioPublic = Depends(get_current_active_user),
+):
+    """Historial completo de transiciones del pedido (ORDER BY created_at ASC)."""
+    return svc.get_by_id(pedido_id, usuario_id=user.id, roles=user.roles).historial
+
+
+@router.patch("/{pedido_id}/estado", response_model=PedidoConDetalle)
 def avanzar_estado(
     pedido_id: int,
     data: AvanzarEstadoRequest,
     svc: PedidoService = Depends(get_service),
-    user: UsuarioPublic = Depends(require_role(["ADMIN", "PEDIDOS", "CLIENT"])),
+    user: UsuarioPublic = Depends(require_role(["ADMIN", "PEDIDOS"])),
 ):
+    """Avanza (o cancela) el estado de un pedido. Valida la FSM. Solo ADMIN/PEDIDOS."""
+    return svc.avanzar_estado(pedido_id, data, usuario_id=user.id, roles=user.roles)
+
+
+@router.delete("/{pedido_id}", response_model=PedidoConDetalle)
+def cancelar_pedido_propio(
+    pedido_id: int,
+    data: CancelarPedidoRequest,
+    svc: PedidoService = Depends(get_service),
+    user: UsuarioPublic = Depends(require_role(["CLIENT"])),
+):
+    """Cancela un pedido propio (solo PENDIENTE o CONFIRMADO). Requiere motivo."""
     return svc.avanzar_estado(
-        pedido_id, data, usuario_id=user.id, roles=user.roles
+        pedido_id,
+        AvanzarEstadoRequest(nuevo_estado="cancelado", motivo=data.motivo),
+        usuario_id=user.id,
+        roles=user.roles,
     )
 
 

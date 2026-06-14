@@ -18,12 +18,16 @@ class PedidoCreate(SQLModel):
 
 
 class AvanzarEstadoRequest(SQLModel):
-    estado_hacia: str
+    nuevo_estado: str
     motivo: Optional[str] = None
 
 
+class CancelarPedidoRequest(SQLModel):
+    motivo: str
+
+
 class PedidoUpdate(SQLModel):
-    estado_hacia: Optional[str] = None
+    nuevo_estado: Optional[str] = None
     motivo: Optional[str] = None
     notas: Optional[str] = None
 
@@ -65,6 +69,7 @@ class PedidoConDetalle(SQLModel):
     id: int
     usuario_id: int
     direccion_id: Optional[int]
+    direccion_snapshot: Optional[str] = None
     estado_codigo: str
     forma_pago_codigo: str
     subtotal: Decimal

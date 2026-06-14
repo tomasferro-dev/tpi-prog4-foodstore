@@ -12,7 +12,7 @@ interface Props {
   onReactivar?: (p: Producto) => void;
   onEditar?: (p: Producto) => void;
   onAjustarStock?: (p: Producto) => void;
-  onAgregarAlCarrito?: (cantidad: number) => Promise<void>;
+  onAgregarAlCarrito?: (cantidad: number) => void | Promise<void>;
 }
 
 export default function ProductoCard({

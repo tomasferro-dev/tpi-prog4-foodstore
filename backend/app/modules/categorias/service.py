@@ -111,6 +111,16 @@ class CategoriaService:
                         f"({nombres}). Primero dé de baja las subcategorías."
                     ),
                 )
+            # RN-CA03: tampoco se puede eliminar si tiene productos activos asociados
+            n_productos = uow.categorias.count_productos_activos(categoria_id)
+            if n_productos > 0:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=(
+                        f"No se puede dar de baja '{cat.nombre}': tiene {n_productos} producto(s) "
+                        f"activo(s) asociado(s). Reasigná o dá de baja esos productos primero."
+                    ),
+                )
             cat.deleted_at = datetime.now(timezone.utc)
             uow.categorias.add(cat)
 

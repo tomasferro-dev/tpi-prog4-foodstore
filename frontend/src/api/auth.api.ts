@@ -8,7 +8,7 @@ export const authApi = {
   },
 
   registro(data: RegisterRequest): Promise<LoginResponse> {
-    return apiClient.post<LoginResponse>("/auth/registro", data).then(r => r.data);
+    return apiClient.post<LoginResponse>("/auth/register", data).then(r => r.data);
   },
 
   logout(): Promise<void> {

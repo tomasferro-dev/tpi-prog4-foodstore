@@ -214,9 +214,21 @@ class UsuarioService:
                                     detail="Refresh token inválido o expirado")
 
             stored = uow.refresh_tokens.get_by_hash(RefreshToken.hash_token(raw_refresh_token))
-            if not stored or not stored.is_valid():
+            if not stored:
                 raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-                                    detail="Refresh token inválido o revocado")
+                                    detail="Refresh token inválido")
+            # RN-AU05: reuso de un token ya revocado (rotado) = posible replay attack.
+            # Se revocan TODOS los refresh tokens del usuario (se cierran sus sesiones).
+            if stored.revoked_at is not None:
+                uow.refresh_tokens.revoke_all_for_user(stored.usuario_id)
+                # Persistimos la revocación ANTES de abortar: si solo hiciéramos
+                # raise, el __exit__ del UoW haría rollback y no se revocaría nada.
+                self._session.commit()
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                                    detail="Refresh token reutilizado. Por seguridad se cerraron todas las sesiones; volvé a iniciar sesión.")
+            if not stored.is_valid():  # expirado
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                                    detail="Refresh token expirado")
 
             user = uow.usuarios.get_by_id(stored.usuario_id)
             if not user or user.deleted_at is not None:

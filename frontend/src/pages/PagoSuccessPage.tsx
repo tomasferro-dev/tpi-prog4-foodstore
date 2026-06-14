@@ -17,6 +17,21 @@ import type { PedidoConDetalle } from "../types/pedidos";
 
 type PageState = "loading" | "success" | "pending" | "error";
 
+/** Parsea el snapshot JSON de la dirección y lo formatea para mostrar. */
+function formatDireccionSnapshot(snapshot?: string | null): string | null {
+  if (!snapshot) return null;
+  try {
+    const d = JSON.parse(snapshot) as {
+      alias?: string | null; linea1?: string; linea2?: string;
+      ciudad?: string; provincia?: string; codigoPostal?: string;
+    };
+    const dir = [d.linea1, d.linea2, d.ciudad, d.provincia, d.codigoPostal].filter(Boolean).join(", ");
+    return d.alias ? `${d.alias} — ${dir}` : dir;
+  } catch {
+    return null;
+  }
+}
+
 export default function PagoSuccessPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -152,6 +167,13 @@ export default function PagoSuccessPage() {
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Número de Pedido</p>
               <p className="text-2xl font-bold text-gray-900 dark:text-white">#{pedido.id}</p>
             </div>
+
+            {formatDireccionSnapshot(pedido.direccionSnapshot) && (
+              <div className="mb-6 pb-6 border-b border-gray-200 dark:border-[#3a3a3c]">
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Entregar en</p>
+                <p className="text-gray-900 dark:text-white">{formatDireccionSnapshot(pedido.direccionSnapshot)}</p>
+              </div>
+            )}
 
             <div className="mb-6 pb-6 border-b border-gray-200 dark:border-[#3a3a3c]">
               <h2 className="font-semibold text-gray-900 dark:text-white mb-3">Productos</h2>

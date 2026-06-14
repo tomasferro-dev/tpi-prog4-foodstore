@@ -4,7 +4,7 @@ import type {
   PedidoList,
   EstadoPedido,
   FormaPago,
-  ItemPedidoRequest,
+  PedidoCreateRequest,
   AvanzarEstadoRequest,
   DashboardResumen,
 } from "../types/pedidos";
@@ -21,44 +21,13 @@ export async function getFormasPago(): Promise<FormaPago[]> {
   return data;
 }
 
-// ====== Carrito (solo CLIENT) ======
-
-export async function getCarritoActual(): Promise<PedidoConDetalle | null> {
-  const { data } = await apiClient.get<PedidoConDetalle | null>("/pedidos/actual");
-  return data;
-}
-
-export async function agregarAlCarrito(
-  item: ItemPedidoRequest
-): Promise<PedidoConDetalle> {
-  const { data } = await apiClient.post<PedidoConDetalle>("/pedidos/items", item);
-  return data;
-}
-
-export async function actualizarItemCarrito(
-  productoId: number,
-  cantidad: number
-): Promise<PedidoConDetalle> {
-  const { data } = await apiClient.post<PedidoConDetalle>(
-    "/pedidos/items",
-    {
-      productoId,
-      cantidad,
-    }
-  );
-  return data;
-}
-
-export async function eliminarDelCarrito(
-  productoId: number
-): Promise<PedidoConDetalle | null> {
-  const { data } = await apiClient.delete<PedidoConDetalle | null>(
-    `/pedidos/items/${productoId}`
-  );
-  return data;
-}
-
 // ====== Pedidos del usuario ======
+
+/** Crea el pedido (pendiente) a partir de los items del carrito client-side (RN-CR01). */
+export async function crearPedido(data: PedidoCreateRequest): Promise<PedidoConDetalle> {
+  const { data: res } = await apiClient.post<PedidoConDetalle>("/pedidos/", data);
+  return res;
+}
 
 export async function getMisPedidos(
   offset: number = 0,
@@ -75,11 +44,21 @@ export async function getPedidoById(pedidoId: number): Promise<PedidoConDetalle>
   return data;
 }
 
+/** Cancela un pedido propio (CLIENT). Solo PENDIENTE o CONFIRMADO. */
+export async function cancelarPedido(pedidoId: number, motivo: string): Promise<PedidoConDetalle> {
+  const { data } = await apiClient.delete<PedidoConDetalle>(`/pedidos/${pedidoId}`, {
+    data: { motivo },
+  });
+  return data;
+}
+
+// ====== Admin / Pedidos (ADMIN/PEDIDOS) ======
+
 export async function avanzarEstadoPedido(
   pedidoId: number,
   request: AvanzarEstadoRequest
 ): Promise<PedidoConDetalle> {
-  const { data } = await apiClient.post<PedidoConDetalle>(
+  const { data } = await apiClient.patch<PedidoConDetalle>(
     `/pedidos/${pedidoId}/estado`,
     request
   );
@@ -94,8 +73,6 @@ export async function revertirEstadoPedido(
   );
   return data;
 }
-
-// ====== Admin (solo ADMIN/PEDIDOS) ======
 
 export async function getTodosPedidos(
   offset: number = 0,

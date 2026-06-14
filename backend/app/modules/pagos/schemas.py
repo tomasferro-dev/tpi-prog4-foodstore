@@ -4,6 +4,10 @@ from typing import Optional
 from sqlmodel import SQLModel
 
 
+class PreferenciaRequest(SQLModel):
+    pedido_id: int
+
+
 class PreferenciaResponse(SQLModel):
     init_point: str
 

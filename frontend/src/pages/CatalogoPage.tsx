@@ -6,7 +6,6 @@ import ProductoCard from "../components/ProductoCard";
 import Pagination from "../components/Pagination";
 import { useAuthStore } from "../stores/authStore";
 import { useCartStore } from "../stores/cartStore";
-import { agregarAlCarrito } from "../api/pedidos.api";
 import type { Categoria, FiltrosProductos, Producto } from "../types";
 
 const ITEMS_POR_PAGINA = 8;
@@ -23,22 +22,20 @@ export default function CatalogoPage() {
   const { data: unidades = [] } = useUnidadesMedidaQuery();
 
   const user = useAuthStore((s) => s.user);
-  const setCarrito = useCartStore((s) => s.setCarrito);
+  const addItem = useCartStore((s) => s.addItem);
   const esCliente = user?.roles.includes("CLIENT") ?? false;
 
-  const handleAgregarAlCarrito = async (cantidad: number, producto: Producto) => {
-    try {
-      const result = await agregarAlCarrito({
-        productoId: producto.id,
-        cantidad,
-      });
-      setCarrito(result);
-      setToastMessage(`${producto.nombre} agregado al carrito`);
-      setTimeout(() => setToastMessage(null), 2000);
-    } catch (error: any) {
-      setToastMessage(error?.detail || "Error al agregar al carrito");
-      setTimeout(() => setToastMessage(null), 3000);
-    }
+  // El carrito es client-side (RN-CR01): agregar solo toca el store de Zustand.
+  const handleAgregarAlCarrito = (cantidad: number, producto: Producto) => {
+    addItem({
+      producto_id: producto.id,
+      nombre: producto.nombre,
+      cantidad,
+      precio_unitario: producto.precioBase,
+      subtotal: producto.precioBase * cantidad,
+    });
+    setToastMessage(`${producto.nombre} agregado al carrito`);
+    setTimeout(() => setToastMessage(null), 2000);
   };
 
   const cambiarFiltro = (parcial: Partial<FiltrosProductos>) =>

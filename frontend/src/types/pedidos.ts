@@ -57,6 +57,7 @@ export interface PedidoConDetalle {
   id: number;
   usuarioId: number;
   direccionId?: number | null;
+  direccionSnapshot?: string | null;  // JSON serializado de la dirección al fijarla
   estadoCodigo: EstadoPedidoCodigo;
   formaPagoCodigo: FormaPagoCodigo;
   subtotal: number;
@@ -110,7 +111,7 @@ export interface ConfirmarCompraRequest {
 }
 
 export interface AvanzarEstadoRequest {
-  estadoHacia: EstadoPedidoCodigo;
+  nuevoEstado: EstadoPedidoCodigo;
   motivo?: string | null;
 }
 
